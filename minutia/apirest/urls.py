@@ -10,4 +10,5 @@ urlpatterns = [
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
     re_path('register/', views.register),
     re_path('getinto_ticket/', views.getinto_ticket),
+    re_path('join_aliment/', views.join_aliment),
 ]

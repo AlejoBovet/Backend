@@ -2,7 +2,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import api_view, schema
 from rest_framework.response import Response
 from rest_framework.schemas import AutoSchema
-from .models import Users,Dispensa
+from .models import Users,Dispensa,Alimento
 from .serializer import UsersSerializer
 import coreapi
 import coreschema
@@ -88,11 +88,76 @@ def getinto_ticket(request):
     if not user_id or not pdf_file:
         return Response({'error': 'User ID and PDF file are required.'}, status=400)
 
-    # Save the PDF file temporarily
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{user_id}.pdf") as temp_pdf:
         for chunk in pdf_file.chunks():
             temp_pdf.write(chunk)
         temp_pdf_path = temp_pdf.name
 
-    # For now, just return a success response with the temporary file path
+    
     return Response({'message': 'PDF file received successfully.', 'temp_pdf_path': temp_pdf_path}, status=200)
+
+# Function to join aliment manually
+@api_view(['POST'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+        coreapi.Field(
+            name="name_aliment",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Name of the aliment.')
+        ),
+        coreapi.Field(
+            name="unit_measurement",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Unit of measurement.')
+        ),
+        coreapi.Field(
+            name="load_alimento",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='Load of the aliment.')
+        ),
+    ]
+))
+def join_aliment(request):
+    user_id = request.data.get('user_id')
+    name_alimento = request.data.get('name_aliment')
+    unit_measurement = request.data.get('unit_measurement')
+    load_alimento = request.data.get('load_alimento')
+
+    # Validar que todos los campos estén presentes
+    if not all([user_id, name_alimento, unit_measurement, load_alimento]):
+        return Response({'error': 'All fields are required.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)  # Cambiar 'id' a 'id_user'
+        dispensa = user.dispensa  # Obtener la dispensa del usuario
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    except Dispensa.DoesNotExist:
+        return Response({'error': 'Dispensa not found for the user.'}, status=404)
+
+    # Crear el alimento y asociarlo a la dispensa
+    alimento = Alimento.objects.create(
+        name_alimento=name_alimento,
+        unit_measurement=unit_measurement,
+        load_alimento=load_alimento
+    )
+
+    # Asociar el alimento a la dispensa
+    dispensa.alimento = alimento
+    dispensa.save()
+
+    return Response({'message': 'Aliment added successfully.', 'aliment': {
+        'name_alimento': alimento.name_alimento,
+        'unit_measurement': alimento.unit_measurement,
+        'load_alimento': alimento.load_alimento
+    }}, status=201)
