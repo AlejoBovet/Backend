@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -77,13 +79,14 @@ WSGI_APPLICATION = 'minutia.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
+load_dotenv()
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'minutia',  # Nombre de tu base de datos
-        'USER': 'root',          # Tu usuario de la base de datos
-        'PASSWORD': 'Serverdeveloper1310', # Tu contraseña de la base de datos
-        'PORT': '3306',                # Puerto de la base de datos (3306 es el puerto por defecto para MySQL)
+        'NAME': os.getenv('DB_NAME'),  # Nombre de tu base de datos
+        'USER': os.getenv('DB_USER'),          # Tu usuario de la base de datos
+        'PASSWORD': os.getenv('DB_PASSWORD'), # Tu contraseña de la base de datos
+        'PORT': os.getenv('DB_HOST'),                # Puerto de la base de datos (3306 es el puerto por defecto para MySQL)
     }
 }
 
