@@ -9,9 +9,17 @@ class Alimento(models.Model):
     def __str__(self):
         return self.name_alimento
 
+class DispensaAlimento(models.Model):
+    dispensa = models.ForeignKey('Dispensa', on_delete=models.CASCADE)
+    alimento = models.ForeignKey(Alimento, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = (('dispensa', 'alimento'),)
+        db_table = 'apirest_dispensa_alimentos'
+
 class Dispensa(models.Model):
     id_dispensa = models.AutoField(primary_key=True)
-    alimento = models.ForeignKey(Alimento, null=True, blank=True,on_delete=models.CASCADE)
+    alimentos = models.ManyToManyField(Alimento, through=DispensaAlimento, blank=True)
 
     def __str__(self):
         return f"Dispensa {self.id_dispensa}"

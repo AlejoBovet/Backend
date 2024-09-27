@@ -2,8 +2,8 @@ from rest_framework import viewsets
 from rest_framework.decorators import api_view, schema
 from rest_framework.response import Response
 from rest_framework.schemas import AutoSchema
-from .models import Users,Dispensa,Alimento
-from .serializer import UsersSerializer
+from .models import Users,Dispensa,Alimento,DispensaAlimento
+from .serializer import UsersSerializer,DispensaSerializer
 import coreapi
 import coreschema
 import tempfile
@@ -138,26 +138,71 @@ def join_aliment(request):
         return Response({'error': 'All fields are required.'}, status=400)
 
     try:
-        user = Users.objects.get(id_user=user_id)  # Cambiar 'id' a 'id_user'
-        dispensa = user.dispensa  # Obtener la dispensa del usuario
+        user = Users.objects.get(id_user=user_id)
+        dispensa = user.dispensa
+        if not dispensa:
+            return Response({'error': 'User does not have a dispensa.'}, status=404)
     except Users.DoesNotExist:
         return Response({'error': 'User not found.'}, status=404)
-    except Dispensa.DoesNotExist:
-        return Response({'error': 'Dispensa not found for the user.'}, status=404)
 
-    # Crear el alimento y asociarlo a la dispensa
+    # Crear el alimento
     alimento = Alimento.objects.create(
         name_alimento=name_alimento,
         unit_measurement=unit_measurement,
         load_alimento=load_alimento
     )
 
-    # Asociar el alimento a la dispensa
-    dispensa.alimento = alimento
-    dispensa.save()
+    # Asociar el alimento a la dispensa en la tabla intermedia
+    dispensa_alimento, created = DispensaAlimento.objects.get_or_create(dispensa=dispensa, alimento=alimento)
 
-    return Response({'message': 'Aliment added successfully.', 'aliment': {
+    return Response({'message': 'Alimento added successfully.', 'alimento': {
+        'id_alimento': alimento.id_alimento,
         'name_alimento': alimento.name_alimento,
         'unit_measurement': alimento.unit_measurement,
         'load_alimento': alimento.load_alimento
     }}, status=201)
+
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+        coreapi.Field(
+            name="dispensa_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='Dispensa ID.')
+        ),
+    ]
+))
+def dispensa_detail(request):
+    user_id = request.query_params.get('user_id')
+    dispensa_id = request.query_params.get('dispensa_id')
+
+    if not user_id or not dispensa_id:
+        return Response({'error': 'User ID and Dispensa ID are required.'}, status=400)
+
+    try:
+        user_id = int(user_id)
+        dispensa_id = int(dispensa_id)
+    except ValueError:
+        return Response({'error': 'User ID and Dispensa ID must be integers.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+
+    try:
+        dispensa = Dispensa.objects.get(id_dispensa=dispensa_id, users=user)
+    except Dispensa.DoesNotExist:
+        return Response({'error': 'Dispensa not found for the user.'}, status=404)
+    except AttributeError:
+        return Response({'error': 'User does not have a dispensa.'}, status=404)
+
+    serializer = DispensaSerializer(dispensa)
+    return Response(serializer.data)
