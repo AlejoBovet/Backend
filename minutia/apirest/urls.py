@@ -12,6 +12,7 @@ urlpatterns = [
     re_path('getinto_ticket/', views.getinto_ticket),
     re_path('join_aliment/', views.join_aliment),
     re_path('delete_alimento/', views.delete_alimento),
+    re_path('edit_alimento/', views.edit_alimento),
     re_path('dispensa_detail/', views.dispensa_detail),
     re_path('create_minuta/', views.create_meinuta),
     re_path('minuta_detail/', views.minuta_detail),
