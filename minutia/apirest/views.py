@@ -2,12 +2,20 @@ from rest_framework import viewsets
 from rest_framework.decorators import api_view, schema
 from rest_framework.response import Response
 from rest_framework.schemas import AutoSchema
+from google.cloud import vision
+from openai import OpenAI
 from .models import Users,Dispensa,Alimento,DispensaAlimento
 from .serializer import UsersSerializer,DispensaSerializer
 import coreapi
 import coreschema
 import tempfile
+import os
+import json
 
+
+#Cargar las keys para google OCT y ChatGPT
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "E://Informatica//AppMinutIA//Backend//ocrappminutia-e3a23be500d4.json"
+#openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
 ## REGISTRO DE USUARIOS
@@ -80,20 +88,87 @@ def register(request):
     ]
 ))
 def getinto_ticket(request):
-    user_id = request.data.get('user_id')
+    user_id = request.data.get('user_id') 
     pdf_file = request.FILES.get('file')
 
     if not user_id or not pdf_file:
         return Response({'error': 'User ID and PDF file are required.'}, status=400)
-
-
+    
     with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{user_id}.pdf") as temp_pdf:
         for chunk in pdf_file.chunks():
             temp_pdf.write(chunk)
         temp_pdf_path = temp_pdf.name
-
     
-    return Response({'message': 'PDF file received successfully.', 'temp_pdf_path': temp_pdf_path}, status=200)
+    client = vision.ImageAnnotatorClient()
+
+    # Cargar la imagen desde un archivo local
+    with open(temp_pdf_path, 'rb') as image_file:
+        content = image_file.read()
+    
+    image = vision.Image(content=content)
+    response = client.text_detection(image=image)
+
+    if response.error.message:
+        return Response({'error': response.error.message}, status=400)  
+    
+     # Extraer el texto del OCR
+    extracted_text = response.full_text_annotation.text
+
+    client = OpenAI()
+    
+    # Prompt para la IA
+    prompt = f"""
+    Tengo la siguiente boleta de supermercado: '{extracted_text}'.
+    Extrae los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad. Responde en formato JSON de la siguiente manera:
+    [
+      {{ "producto": "nombre del producto","unidad": "unidad","cantidad": "cantidad" }},
+     ...
+    ]
+    """
+
+    completion = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ])
+
+    # Obtener la respuesta de OpenAI
+    openai_response = completion.choices[0].message.content
+
+    # Extraer el contenido JSON de la respuesta
+    json_start = openai_response.find('```json') + len('```json')
+    json_end = openai_response.rfind('```')
+    json_content = openai_response[json_start:json_end].strip()
+
+    # Parsear la respuesta JSON
+    alimentos = json.loads(json_content)
+
+    #Guardar los alimentos en la base de datos
+    try:
+        user = Users.objects.get(id_user=user_id)
+        dispensa = user.dispensa
+        if not dispensa:
+            return Response({'error': 'User does not have a dispensa.'}, status=404)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+
+    for alimento in alimentos:
+        Alimento.objects.create(
+            name_alimento=alimento['producto'],
+            unit_measurement=alimento['unidad'],
+            load_alimento=alimento['cantidad']
+        )
+    # Asociar el alimento a la dispensa en la tabla intermedia
+    dispensa_alimento, created = DispensaAlimento.objects.get_or_create(dispensa=dispensa, alimento=alimento)
+
+    #Limpiar el archivo temporal
+    os.remove(temp_pdf_path)
+    
+    return Response({'Message': 'Integracion OpenIA exitosa', 'response': openai_response}, status=200)
 
 # Function to join aliment manually
 @api_view(['POST'])

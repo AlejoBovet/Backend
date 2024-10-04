@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+#key de google cloud
+ocrappminutia-e3a23be500d4.json
+
 # Distribution / packaging
 .Python
 build/
