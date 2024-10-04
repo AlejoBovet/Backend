@@ -124,6 +124,7 @@ def getinto_ticket(request):
       {{ "producto": "nombre del producto","unidad": "unidad","cantidad": "cantidad" }},
      ...
     ]
+    en caso que no puedas determinar la unidad de medida asignar "unidad": "kg" o "unidad": "lt" dependiendo del caso 
     """
 
     completion = client.chat.completions.create(
@@ -156,19 +157,24 @@ def getinto_ticket(request):
     except Users.DoesNotExist:
         return Response({'error': 'User not found.'}, status=404)
 
-    for alimento in alimentos:
-        Alimento.objects.create(
-            name_alimento=alimento['producto'],
-            unit_measurement=alimento['unidad'],
-            load_alimento=alimento['cantidad']
+    alimentos_guardados = []
+    for alimento_data in alimentos:
+        alimento = Alimento.objects.create(
+            name_alimento=alimento_data['producto'],
+            unit_measurement=alimento_data['unidad'],
+            load_alimento=alimento_data['cantidad']
         )
-    # Asociar el alimento a la dispensa en la tabla intermedia
-    dispensa_alimento, created = DispensaAlimento.objects.get_or_create(dispensa=dispensa, alimento=alimento)
+        DispensaAlimento.objects.get_or_create(dispensa=dispensa, alimento=alimento)
+        alimentos_guardados.append({
+            'producto': alimento.name_alimento,
+            'unidad': alimento.unit_measurement,
+            'cantidad': alimento.load_alimento
+        })
 
-    #Limpiar el archivo temporal
+    # Eliminar el archivo PDF temporal
     os.remove(temp_pdf_path)
-    
-    return Response({'Message': 'Integracion OpenIA exitosa', 'response': openai_response}, status=200)
+
+    return Response({'Message': 'Ingreso de alimentos exitoso', 'data': alimentos_guardados}, status=200)
 
 # Function to join aliment manually
 @api_view(['POST'])
