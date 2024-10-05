@@ -121,7 +121,7 @@ def getinto_ticket(request):
     Tengo la siguiente boleta de supermercado: '{extracted_text}'.
     Extrae los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad. Responde en formato JSON de la siguiente manera:
     [
-      {{ "producto": "nombre del producto","unidad": "unidad","cantidad": "cantidad" }},
+      {{ "producto": "nombre del producto","unidad": "kg o gr o lt o ml","cantidad": "cantidad" }},
      ...
     ]
     en caso que no puedas determinar la unidad de medida asignar "unidad": "kg" o "unidad": "lt" dependiendo del caso 
@@ -174,7 +174,7 @@ def getinto_ticket(request):
     # Eliminar el archivo PDF temporal
     os.remove(temp_pdf_path)
 
-    return Response({'Message': 'Ingreso de alimentos exitoso', 'data': alimentos_guardados}, status=200)
+    return Response({'Message': 'Ingreso de alimentos exitoso'}, status=200)
 
 # Function to join aliment manually
 @api_view(['POST'])
