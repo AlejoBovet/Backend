@@ -2,12 +2,14 @@ from rest_framework import viewsets
 from rest_framework.decorators import api_view, schema
 from rest_framework.response import Response
 from rest_framework.schemas import AutoSchema
+from django.utils import timezone
 from google.cloud import vision
 from openai import OpenAI
 from .models import Users,Dispensa,Alimento,DispensaAlimento
 from .serializer import UsersSerializer,DispensaSerializer
 import coreapi
 import coreschema
+import pytz
 import tempfile
 import os
 import json
@@ -174,6 +176,11 @@ def getinto_ticket(request):
             'cantidad': alimento.load_alimento
         })
 
+
+    # Actualizar el campo de última actualización de la dispensa
+    dispensa.ultima_actualizacion = timezone.now()
+    dispensa.save()
+
     # Eliminar el archivo PDF temporal
     os.remove(temp_pdf_path)
 
@@ -236,6 +243,10 @@ def join_aliment(request):
 
     # Asociar el alimento a la dispensa en la tabla intermedia
     dispensa_alimento, created = DispensaAlimento.objects.get_or_create(dispensa=dispensa, alimento=alimento)
+
+    # Actualizar el campo de última actualización de la dispensa
+    dispensa.ultima_actualizacion = timezone.now()
+    dispensa.save()
 
     return Response({'message': 'Alimento added successfully.', 'alimento': {
         'id_alimento': alimento.id_alimento,
@@ -305,6 +316,11 @@ def delete_alimento(request):
         return Response({'error': 'Alimento not found in the dispensa.'}, status=404)
 
     dispensa_alimento.delete()
+
+    # Actualizar el campo de última actualización de la dispensa
+    dispensa.ultima_actualizacion = timezone.now()
+    dispensa.save()
+
     return Response({'message': 'Alimento deleted successfully.'}, status=200)
 
 #Eliminacion masiva de alimentos
@@ -385,6 +401,10 @@ def edit_alimento(request):
     alimento.load_alimento = load_alimento
     alimento.save()
 
+    # Actualizar el campo de última actualización de la dispensa
+    dispensa.ultima_actualizacion = timezone.now()
+    dispensa.save()
+
     return Response({'message': 'Alimento updated successfully.', 'alimento': {
         'id_alimento': alimento.id_alimento,
         'name_alimento': alimento.name_alimento,
@@ -439,7 +459,17 @@ def dispensa_detail(request):
         return Response({'error': 'User does not have a dispensa.'}, status=404)
 
     serializer = DispensaSerializer(dispensa)
-    return Response(serializer.data)
+
+    # Convertir la hora a la zona horaria local (Santiago) para la respuesta
+    santiago_tz = pytz.timezone('America/Santiago')
+    ultima_actualizacion_local = dispensa.ultima_actualizacion.astimezone(santiago_tz)
+
+    # Serializar la dispensa
+    serializer = DispensaSerializer(dispensa)
+    data = serializer.data
+    data['ultima_actualizacion'] = ultima_actualizacion_local.strftime('%Y-%m-%d %H:%M:%S %Z%z')
+
+    return Response(data)
 
 # MINUTA DE ALIMENTOS
 
