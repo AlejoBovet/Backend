@@ -304,6 +304,9 @@ def delete_alimento(request):
     dispensa_alimento.delete()
     return Response({'message': 'Alimento deleted successfully.'}, status=200)
 
+#Eliminacion masiva de alimentos
+
+
 #EDITAR ALIMENTO
 @api_view(['PUT'])
 @schema(AutoSchema(

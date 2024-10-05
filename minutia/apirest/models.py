@@ -46,14 +46,15 @@ class Minuta(models.Model):
     def __str__(self):
         return f"Minuta {self.id_minuta} - {self.name_food}"
 
+
 class HistorialAlimentos(models.Model):
     id_historial = models.AutoField(primary_key=True)
-    alimento = models.ForeignKey(Alimento, null=True, on_delete=models.SET_NULL)
+    alimento_id = models.IntegerField(null=True, blank=True)  # Reemplaza la ForeignKey por un IntegerField
     name_alimento = models.CharField(max_length=255)
     unit_measurement = models.CharField(max_length=255)
     load_alimento = models.IntegerField()
-    dispensa = models.ForeignKey(Dispensa, null=True, on_delete=models.SET_NULL)
-    user = models.ForeignKey(Users, on_delete=models.CASCADE)
+    dispensa_id = models.IntegerField(null=True, blank=True)  # Reemplaza la ForeignKey por un IntegerField
+    user_id = models.IntegerField(null=True, blank=True)  # Reemplaza la ForeignKey por un IntegerField
     date_join = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
