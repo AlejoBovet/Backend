@@ -4,7 +4,7 @@ class Alimento(models.Model):
     id_alimento = models.AutoField(primary_key=True)
     name_alimento = models.CharField(max_length=255)
     unit_measurement = models.CharField(max_length=255)
-    load_alimento = models.DecimalField(max_digits=10, decimal_places=3)
+    load_alimento = models.DecimalField(max_digits=10, decimal_places=0)
 
     def __str__(self):
         return self.name_alimento
