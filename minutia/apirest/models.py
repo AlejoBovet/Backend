@@ -20,31 +20,60 @@ class DispensaAlimento(models.Model):
 class Dispensa(models.Model):
     id_dispensa = models.AutoField(primary_key=True)
     alimentos = models.ManyToManyField(Alimento, through=DispensaAlimento, blank=True)
+    ultima_actualizacion = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"Dispensa {self.id_dispensa}"
+
+USER_TYPE_CHOICES = [
+    ('admin', 'Admin'),
+    ('regular', 'Regular'),
+    ('student', 'Estudiante'),
+    ('worker', 'Trabajador'),
+    ('homemaker', 'Dueño de casa'),
+]
 
 class Users(models.Model):
     id_user = models.AutoField(primary_key=True)
     name_user = models.CharField(max_length=255)
     last_name_user = models.CharField(max_length=255)
     year_user = models.IntegerField()
-    type_user = models.CharField(max_length=255)
+    user_type = models.CharField(max_length=50, choices=USER_TYPE_CHOICES)
     dispensa = models.OneToOneField(Dispensa, null=True, blank=True, on_delete=models.SET_NULL)
 
     def __str__(self):
         return f"{self.name_user} {self.last_name_user}"
 
-class Minuta(models.Model):
-    id_minuta = models.AutoField(primary_key=True)
-    fecha = models.DateField(null=True, blank=True)
-    type_food = models.CharField(max_length=255)
-    name_food = models.CharField(max_length=255)
-    state_minuta = models.BooleanField()
-    user = models.ForeignKey(Users, on_delete=models.CASCADE)
+STATE_MINUTA_CHOICES = [
+    ('active', 'Active'),
+    ('inactive', 'Inactive'),
+]
+
+class ListaMinuta(models.Model):
+    id_lista_minuta = models.AutoField(primary_key=True)
+    user = models.ForeignKey(Users, related_name='listas_minuta', on_delete=models.CASCADE)
+    fecha_inicio = models.DateField(null=True, blank=True)  # Fecha de inicio
+    fecha_termino = models.DateField(null=True, blank=True)  # Fecha de término
+    state_minuta = models.CharField(max_length=50, choices=STATE_MINUTA_CHOICES)  # Estado de la minuta
 
     def __str__(self):
-        return f"Minuta {self.id_minuta} - {self.name_food}"
+        return f"ListaMinuta {self.id_lista_minuta} - {self.user.name_user} {self.user.last_name_user}"
+
+TYPE_FOOD_CHOICES = [
+    ('desayuno', 'Desayuno'),
+    ('almuerzo', 'Almuerzo'),
+    ('cena', 'Cena'),
+]
+
+class Minuta(models.Model):
+    id_minuta = models.AutoField(primary_key=True)
+    lista_minuta = models.ForeignKey(ListaMinuta, related_name='minutas', on_delete=models.CASCADE, null=True, blank=True)
+    type_food = models.CharField(max_length=50, choices=TYPE_FOOD_CHOICES)  # Desayuno, Almuerzo, Cena
+    name_food = models.CharField(max_length=255)  # Nombre del plato
+    fecha = models.DateField(null=True, blank=True)  # Fecha de la minuta
+
+    def __str__(self):
+        return f"Minuta {self.id_minuta} - {self.name_food} ({self.type_food})"
 
 
 class HistorialAlimentos(models.Model):

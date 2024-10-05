@@ -43,11 +43,14 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "E://Informatica//AppMinutIA//Bac
             schema=coreschema.Integer(description='Year the user register.')
         ),
         coreapi.Field(
-            name="type_user",
-            required=True,
-            location="form",
-            schema=coreschema.String(description='Type the user register.')
-        ),
+        name="user_type",
+        required=True,
+        location="form",
+        schema=coreschema.Enum(
+            enum=["trabajador", "estudiante","dueño de casa"],
+            description='Type the user register. Allowed values: trabajador, estudiante, dueño de casa.'
+    )
+),
     ]
 ))
 def register(request):
