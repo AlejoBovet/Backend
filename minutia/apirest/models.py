@@ -24,6 +24,18 @@ class Dispensa(models.Model):
 
     def __str__(self):
         return f"Dispensa {self.id_dispensa}"
+    
+    def get_alimentos_details(self):
+        return [
+            {
+                'id': alimento.id_alimento,
+                'name': alimento.name_alimento,
+                'unit': alimento.unit_measurement,
+                'load': alimento.load_alimento
+            }
+            for alimento in self.alimentos.all()
+        ]
+    
 
 USER_TYPE_CHOICES = [
     ('admin', 'Admin'),

@@ -17,6 +17,7 @@ urlpatterns = [
     re_path('create_minuta/', views.create_meinuta),
     re_path('minuta_detail/', views.minuta_detail),
     re_path('delete_minuta/', views.delete_minuta),
+    re_path('delete_minuta_alimentos/', views.delete_all_alimentos),
     re_path('minuta_history/', views.minuta_history),
     re_path('get_receta/', views.get_receta),
 ]

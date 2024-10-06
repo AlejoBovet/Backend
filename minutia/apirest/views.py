@@ -5,7 +5,7 @@ from rest_framework.schemas import AutoSchema
 from django.utils import timezone
 from google.cloud import vision
 from openai import OpenAI
-from .models import Users,Dispensa,Alimento,DispensaAlimento
+from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta
 from .serializer import UsersSerializer,DispensaSerializer
 import coreapi
 import coreschema
@@ -13,6 +13,8 @@ import pytz
 import tempfile
 import os
 import json
+from datetime import datetime
+from dateutil import parser
 
 
 #Cargar las keys para google OCT y ChatGPT
@@ -324,7 +326,56 @@ def delete_alimento(request):
     return Response({'message': 'Alimento deleted successfully.'}, status=200)
 
 #Eliminacion masiva de alimentos
+@api_view(['DELETE'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+        coreapi.Field(
+            name="dispensa_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='Dispensa ID.')
+        ),
+    ]
+))
+def delete_all_alimentos(request):
+    user_id = request.query_params.get('user_id')
+    dispensa_id = request.query_params.get('dispensa_id')
 
+    if not all([user_id, dispensa_id]):
+        return Response({'error': 'User ID and Dispensa ID are required.'}, status=400)
+
+    try:
+        user_id = int(user_id)
+        dispensa_id = int(dispensa_id)
+    except ValueError:
+        return Response({'error': 'User ID and Dispensa ID must be integers.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+
+    try:
+        dispensa = Dispensa.objects.get(id_dispensa=dispensa_id, users=user)
+    except Dispensa.DoesNotExist:
+        return Response({'error': 'Dispensa not found for the user.'}, status=404)
+    except AttributeError:
+        return Response({'error': 'User does not have a dispensa.'}, status=404)
+
+    # Eliminar todos los alimentos de la dispensa
+    DispensaAlimento.objects.filter(dispensa=dispensa).delete()
+
+    # Actualizar el campo de última actualización de la dispensa
+    dispensa.ultima_actualizacion = timezone.now()
+    dispensa.save()
+
+    return Response({'message': 'All alimentos deleted successfully.'}, status=200)
 
 #EDITAR ALIMENTO
 @api_view(['PUT'])
@@ -471,9 +522,7 @@ def dispensa_detail(request):
 
     return Response(data)
 
-# MINUTA DE ALIMENTOS
-
-#CREAR MINUTA DE ALIMENTOS
+# CREAR MINUTA DE ALIMENTOS
 @api_view(['POST'])
 @schema(AutoSchema(
     manual_fields=[
@@ -489,15 +538,151 @@ def dispensa_detail(request):
             location="form",
             schema=coreschema.Integer(description='Dispensa ID.')
         ),
+        coreapi.Field(
+            name="people_number",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='Number of people.')
+        ),
+        coreapi.Field(
+            name="dietary preference",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Dietary preference.')
+        ),
+        coreapi.Field(
+            name="type_food",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Type of food. Allowed values: desayuno, almuerzo and/or cena.')
+        ),
     ]
 ))
 def create_meinuta(request):
     user_id = request.data.get('user_id')
     dispensa_id = request.data.get('dispensa_id')
+    people_number = request.data.get('people_number')
+    dietary_preference = request.data.get('dietary preference')
+    type_food = request.data.get('type_food')
 
+    if not all([user_id, dispensa_id, people_number, dietary_preference, type_food]):
+        return Response({'error': 'All fields are required.'}, status=400)
     
-    return Response({'mensasage': 'Operativo'}, status=202)
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    
+    try:
+        dispensa = Dispensa.objects.get(id_dispensa=dispensa_id, users=user)
+    except Dispensa.DoesNotExist:
+        return Response({'error': 'Dispensa not found for the user.'}, status=404)
+    except AttributeError:
+        return Response({'error': 'User does not have a dispensa.'}, status=404)
+    
+    # Obtener los alimentos asociados a la despensa
+    alimentos_list = dispensa.get_alimentos_details()
 
+    # Crear la lista de minuta
+    # se inicializa la api de openai
+    client = OpenAI()
+    # se crea el prompt para la api
+    santiago_tz = pytz.timezone('America/Santiago')
+    starting_date = timezone.localtime(timezone.now(), santiago_tz)
+    prompt = f"""
+    Tengo la siguiente despensa: '{alimentos_list}'. Solo puedes utilizar estos ingredientes.
+    Necesito una minuta para {people_number} personas con preferencia {dietary_preference} que incluya {type_food} para los próximos 5 días, comenzando desde {starting_date}.
+    Responde únicamente en formato JSON. No hagas preguntas ni incluyas información adicional. Proporciona la respuesta en el siguiente formato JSON:
+    [
+       {{ "name_food": "nombre del plato" ,
+       "type_food": "tipo de comida",
+       "fecha": ""YYYY-MM-DD""}}     
+    ]
+    """
+
+
+    # se crea la respuesta de la api
+    completion = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ])
+
+    # Obtener la respuesta de OpenAI
+    openai_response = completion.choices[0].message.content
+
+    # Extraer el contenido JSON de la respuesta
+    json_start = openai_response.find('[')
+    json_end = openai_response.rfind(']') + 1
+    json_content = openai_response[json_start:json_end].strip()
+
+    # Parsear la respuesta JSON
+    try:
+        minutas = json.loads(json_content)
+    except json.JSONDecodeError:
+        return Response({'error': 'Invalid JSON format.'}, status=400)
+    
+    if not minutas:
+        return Response({'error': 'No minutas found in the response.'}, status=400)
+
+    # Extraer la última fecha de la minuta y convertirla a un objeto datetime
+    fecha_termino_str = minutas[-1]['fecha']
+    try:
+        fecha_termino = parser.parse(fecha_termino_str)
+        fecha_termino = fecha_termino.replace(tzinfo=pytz.UTC)  # Asegurarse de que esté en UTC
+    except (ValueError, parser.ParserError) as e:
+        return Response({'error': f'Invalid date format in minutas: {str(e)}'}, status=400)
+
+    # Crear la lista de minuta y asociarla a los alimentos
+    lista_minuta = ListaMinuta.objects.create(
+        user=user,
+        fecha_inicio=timezone.now(),
+        fecha_termino=fecha_termino,
+        state_minuta=True  # Asumiendo que es un booleano
+    )
+
+    for minuta_data in minutas:
+        try:
+            fecha_minuta = parser.parse(minuta_data['fecha'])
+        except (ValueError, parser.ParserError) as e:
+            return Response({'error': f'Invalid date format in minuta: {str(e)}'}, status=400)
+        
+        Minuta.objects.create(
+            lista_minuta=lista_minuta,
+            type_food=minuta_data['type_food'],
+            name_food=minuta_data['name_food'],
+            fecha=fecha_minuta
+        )
+
+    # Convertir la hora a la zona horaria local (Santiago) para la respuesta
+    santiago_tz = pytz.timezone('America/Santiago')
+    fecha_inicio_local = lista_minuta.fecha_inicio.astimezone(santiago_tz)
+    fecha_termino_local = lista_minuta.fecha_termino
+
+    # Formatear las fechas de las minutas para la respuesta
+    minutas_data = [
+        {
+            'type_food': minuta.type_food,
+            'name_food': minuta.name_food,
+            'fecha': minuta.fecha
+        } for minuta in lista_minuta.minutas.all()
+    ]
+
+    return Response({
+        'message': 'Minutas added successfully.',
+        'lista_minuta': {
+            'id_lista_minuta': lista_minuta.id_lista_minuta,
+            'fecha_inicio': fecha_inicio_local.strftime('%Y-%m-%d %H:%M:%S %Z%z'),
+            'fecha_termino': fecha_termino_local,
+            'state_minuta': lista_minuta.state_minuta
+        },
+        'minutas': minutas_data
+    }, status=201)
+ 
 #CONSULTAR MINUTA DE ALIMENTOS
 @api_view(['GET'])
 @schema(AutoSchema(
@@ -507,45 +692,94 @@ def create_meinuta(request):
             required=True,
             location="query",
             schema=coreschema.Integer(description='User ID.')
-        ),
-        coreapi.Field(
-            name="dispensa_id",
-            required=True,
-            location="query",
-            schema=coreschema.Integer(description='Dispensa ID.')
-        ),
+        ),    
     ]
 ))
 def minuta_detail(request):
     user_id = request.query_params.get('user_id')
-    dispensa_id = request.query_params.get('dispensa_id')
+    
+    # Validar que el campo esté presente
+    if not user_id:
+        return Response({'error': 'User ID is required.'}, status=400)
+    
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    
+    # Obtener la última minuta activa del usuario
+    try:
+        lista_minuta = ListaMinuta.objects.get(user=user, state_minuta=True)
+    except ListaMinuta.DoesNotExist:
+        return Response({'error': 'No active minuta found for the user.'}, status=404)
+    
+    # Convertir la hora a la zona horaria local (Santiago) para la respuesta
+    santiago_tz = pytz.timezone('America/Santiago')
+    fecha_inicio_local = lista_minuta.fecha_inicio 
+    fecha_termino_local = lista_minuta.fecha_termino
 
+    # Formatear las fechas de las minutas para la respuesta
+    minutas_data = [
+        {
+            'type_food': minuta.type_food,
+            'name_food': minuta.name_food,
+            'fecha': minuta.fecha
+        } for minuta in lista_minuta.minutas.all()
+    ]
 
-    return Response({'mensasage': 'Operativo'}, status=202)
+    return Response({
+        'lista_minuta': {
+            'id_lista_minuta': lista_minuta.id_lista_minuta,
+            'fecha_inicio': fecha_inicio_local.strftime('%Y-%m-%d'),
+            'fecha_termino': fecha_termino_local,
+            'state_minuta': lista_minuta.state_minuta
+        },
+        'minutas': minutas_data
+    })
+
 
 #ELIMINAR MINUTA DE ALIMENTOS
-@api_view(['DELETE'])
+@api_view(['PUT'])
 @schema(AutoSchema(
     manual_fields=[
         coreapi.Field(
             name="user_id",
             required=True,
-            location="query",
+            location="form",
             schema=coreschema.Integer(description='User ID.')
         ),
         coreapi.Field(
-            name="dispensa_id",
+            name="ListaMinuta_id",
             required=True,
-            location="query",
-            schema=coreschema.Integer(description='Dispensa ID.')
+            location="form",
+            schema=coreschema.Integer(description='ListaMinuta ID.')
         ),
+        
     ]
 ))
 def delete_minuta(request):
     user_id = request.query_params.get('user_id')
-    dispensa_id = request.query_params.get('dispensa_id')
+    id_lista_minuta = request.query_params.get('ListaMinuta_id')
+
+    # Validar que todos los campos estén presentes
+    if not all([user_id, id_lista_minuta]):
+        return Response({'error': 'User ID and ListaMinuta ID are required.'}, status=400)
     
-    return Response({'mensasage': 'Operativo'}, status=202)
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    
+    try:
+        lista_minuta = ListaMinuta.objects.get(id_lista_minuta=id_lista_minuta, user=user)
+    except ListaMinuta.DoesNotExist:
+        return Response({'error': 'ListaMinuta not found for the user.'}, status=404)
+    
+    #cambiar statu de la minuta a inactivo
+    lista_minuta.state_minuta = False
+    lista_minuta.save()
+
+    return Response({'message': 'Minuta deleted successfully.'}, status=200)
 
 #CONSULTAR HISTORIAL DE MINUTA DE ALIMENTOS
 @api_view(['GET'])
