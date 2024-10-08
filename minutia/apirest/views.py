@@ -118,7 +118,7 @@ def getinto_ticket(request):
     if response.error.message:
         return Response({'error': response.error.message}, status=400)  
     
-     # Extraer el texto del OCR
+    # Extraer el texto del OCR
     extracted_text = response.full_text_annotation.text
 
     client = OpenAI()
@@ -128,8 +128,7 @@ def getinto_ticket(request):
     Tengo la siguiente boleta de supermercado: '{extracted_text}'.
     Extrae los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad. Responde en formato JSON de la siguiente manera:
     [
-      {{ "producto": "nombre del producto","unidad": "kg o gr o lt o ml","cantidad": "cantidad" }},
-     ...
+      {{ "producto": "nombre del producto","unidad": "kg o gr o lt o ml","cantidad": "cantidad" }} 
     ]
     en caso que no puedas determinar la unidad de medida asignar "unidad": "kg" o "unidad": "lt" dependiendo del caso 
     """
@@ -148,14 +147,22 @@ def getinto_ticket(request):
     openai_response = completion.choices[0].message.content
 
     # Extraer el contenido JSON de la respuesta
-    json_start = openai_response.find('```json') + len('```json')
-    json_end = openai_response.rfind('```')
+    json_start = openai_response.find('[')
+    json_end = openai_response.rfind(']') + 1
     json_content = openai_response[json_start:json_end].strip()
 
     # Parsear la respuesta JSON
-    alimentos = json.loads(json_content)
+    try:
+        alimentos = json.loads(json_content)
+    except json.JSONDecodeError:
+        return Response({'error': 'Invalid JSON format.'}, status=400)
 
-    #Guardar los alimentos en la base de datos
+    # Validar que los alimentos tengan valores válidos
+    for alimento in alimentos:
+        if not alimento['cantidad'].replace('.', '', 1).isdigit():
+            return Response({'error': f"El valor de cantidad para el producto {alimento['producto']} no es válido."}, status=400)
+
+    # Guardar los alimentos en la base de datos
     try:
         user = Users.objects.get(id_user=user_id)
         dispensa = user.dispensa
@@ -177,7 +184,6 @@ def getinto_ticket(request):
             'unidad': alimento.unit_measurement,
             'cantidad': alimento.load_alimento
         })
-
 
     # Actualizar el campo de última actualización de la dispensa
     dispensa.ultima_actualizacion = timezone.now()
@@ -539,6 +545,18 @@ def dispensa_detail(request):
             schema=coreschema.Integer(description='Dispensa ID.')
         ),
         coreapi.Field(
+            name='name_minuta',
+            required=False,
+            location='form',
+            schema=coreschema.String(description='Name of the minuta.')
+        ),
+        coreapi.Field(
+            name='start_date',
+            required=True,
+            location='form',
+            schema=coreschema.String(description='Start date of the minuta.')
+        ),
+        coreapi.Field(
             name="people_number",
             required=True,
             location="form",
@@ -561,12 +579,23 @@ def dispensa_detail(request):
 def create_meinuta(request):
     user_id = request.data.get('user_id')
     dispensa_id = request.data.get('dispensa_id')
+    name_lista_minuta = request.data.get('name_minuta')
+    date_start = request.data.get('start_date')
     people_number = request.data.get('people_number')
     dietary_preference = request.data.get('dietary preference')
     type_food = request.data.get('type_food')
 
-    if not all([user_id, dispensa_id, people_number, dietary_preference, type_food]):
+    if not all([ user_id, dispensa_id, date_start, people_number, dietary_preference, type_food]):
         return Response({'error': 'All fields are required.'}, status=400)
+
+    if name_lista_minuta is None:
+        name_lista_minuta = f"Minuta {timezone.now().strftime('%d-%m-%Y')}"
+
+    # Validar el formato de la fecha de inicio
+    try:
+        date_start = datetime.strptime(date_start, '%Y-%m-%d').date()
+    except ValueError:
+        return Response({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
     
     try:
         user = Users.objects.get(id_user=user_id)
@@ -583,15 +612,18 @@ def create_meinuta(request):
     # Obtener los alimentos asociados a la despensa
     alimentos_list = dispensa.get_alimentos_details()
 
+    if not alimentos_list:
+        return Response({'error': 'No alimentos found in the dispensa.'}, status=400)
+
     # Crear la lista de minuta
     # se inicializa la api de openai
     client = OpenAI()
     # se crea el prompt para la api
-    santiago_tz = pytz.timezone('America/Santiago')
-    starting_date = timezone.localtime(timezone.now(), santiago_tz)
+    starting_date =  date_start
     prompt = f"""
     Tengo la siguiente despensa: '{alimentos_list}'. Solo puedes utilizar estos ingredientes.
-    Necesito una minuta para {people_number} personas con preferencia {dietary_preference} que incluya {type_food} para los próximos 5 días, comenzando desde {starting_date}.
+    Necesito una minuta para {people_number} personas con preferencia {dietary_preference} que incluya {type_food} para los días que alcance la comida, comenzando desde {starting_date}.
+    Las fechas deben ser consecutivas y no deben faltar días. Calcula cuántos días puede durar la minuta en función de la cantidad de alimentos disponible. Utiliza la cantidad adecuada de ingredientes por día.
     Responde únicamente en formato JSON. No hagas preguntas ni incluyas información adicional. Proporciona la respuesta en el siguiente formato JSON:
     [
        {{ "name_food": "nombre del plato" ,
@@ -640,7 +672,9 @@ def create_meinuta(request):
     # Crear la lista de minuta y asociarla a los alimentos
     lista_minuta = ListaMinuta.objects.create(
         user=user,
-        fecha_inicio=timezone.now(),
+        nombre_lista_minuta=request.data.get('name_minuta'),
+        fecha_creacion=timezone.now(),
+        fecha_inicio=starting_date,
         fecha_termino=fecha_termino,
         state_minuta=True  # Asumiendo que es un booleano
     )
@@ -659,8 +693,8 @@ def create_meinuta(request):
         )
 
     # Convertir la hora a la zona horaria local (Santiago) para la respuesta
-    santiago_tz = pytz.timezone('America/Santiago')
-    fecha_inicio_local = lista_minuta.fecha_inicio.astimezone(santiago_tz)
+    #santiago_tz = pytz.timezone('America/Santiago')
+    fecha_inicio_local = lista_minuta.fecha_inicio
     fecha_termino_local = lista_minuta.fecha_termino
 
     # Formatear las fechas de las minutas para la respuesta
@@ -676,6 +710,8 @@ def create_meinuta(request):
         'message': 'Minutas added successfully.',
         'lista_minuta': {
             'id_lista_minuta': lista_minuta.id_lista_minuta,
+            'nombre_lista_minuta': lista_minuta.nombre_lista_minuta,
+            'fecha_inicio': fecha_inicio_local.strftime('%Y-%m-%d %H:%M:%S %Z%z'),
             'fecha_inicio': fecha_inicio_local.strftime('%Y-%m-%d %H:%M:%S %Z%z'),
             'fecha_termino': fecha_termino_local,
             'state_minuta': lista_minuta.state_minuta
@@ -730,6 +766,8 @@ def minuta_detail(request):
     return Response({
         'lista_minuta': {
             'id_lista_minuta': lista_minuta.id_lista_minuta,
+            'nombre_lista_minuta': lista_minuta.nombre_lista_minuta,
+            'fecha_creacion': lista_minuta.fecha_creacion,
             'fecha_inicio': fecha_inicio_local.strftime('%Y-%m-%d'),
             'fecha_termino': fecha_termino_local,
             'state_minuta': lista_minuta.state_minuta
@@ -779,7 +817,7 @@ def desactivate_minuta(request):
     lista_minuta.state_minuta = False
     lista_minuta.save()
 
-    return Response({'message': 'Minuta deleted successfully.'}, status=200)
+    return Response({'message': 'Minuta is desactivated.'}, status=200)
 
 #CONSULTAR HISTORIAL DE MINUTA DE ALIMENTOS
 @api_view(['GET'])
@@ -813,6 +851,8 @@ def minuta_history(request):
         fecha_termino_local = minuta.fecha_termino
         minutas_data.append({
             'id_lista_minuta': minuta.id_lista_minuta,
+            'nombre_lista_minuta': minuta.nombre_lista_minuta,
+            'fecha_creacion': minuta.fecha_creacion,
             'fecha_inicio': fecha_inicio_local.strftime('%Y-%m-%d'),
             'fecha_termino': fecha_termino_local,
             'state_minuta': minuta.state_minuta
@@ -831,17 +871,65 @@ def minuta_history(request):
             schema=coreschema.Integer(description='User ID.')
         ),
         coreapi.Field(
-            name="dispensa_id",
+            name="id_lista_minuta",
             required=True,
             location="form",
-            schema=coreschema.Integer(description='Dispensa ID.')
+            schema=coreschema.Integer(description='id_lista_minuta')
+        ),
+        coreapi.Field(
+            name="id_alimento",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='id Alimento.')
         ),
     ]
 ))
 def get_receta(request):
     user_id = request.data.get('user_id')
-    dispensa_id = request.data.get('dispensa_id')
-    
-    return Response({'mensasage': 'Operativo'}, status=202)
+    id_alimento = request.data.get('id_alimento')
+    id_lista_minuta = request.data.get('id_lista_minuta')
+
+    if not all([user_id, id_alimento, id_lista_minuta]):
+        return Response({'error': 'All fields are required.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+
+    try:
+        lista_minuta = ListaMinuta.objects.get(id_lista_minuta=id_lista_minuta, user=user)
+    except ListaMinuta.DoesNotExist:
+        return Response({'error': 'ListaMinuta not found for the user.'}, status=404)
+
+    try:
+        alimento = Alimento.objects.get(id_alimento=id_alimento)
+    except Alimento.DoesNotExist:
+        return Response({'error': 'Alimento not found.'}, status=404)
+
+    #obtener nombte del alimento
+    name_alimento = alimento.name_alimento
+
+    # se inicializa la api de openai
+    client = OpenAI()
+    # se crea el prompt para la api
+    prompt = f"""
+    Necesito una receta para el alimento {name_alimento}.
+    """
+    # se crea la respuesta de la api
+    completion = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ])
+
+    # Obtener la respuesta de OpenAI
+    openai_response = completion.choices[0].message.content
+
+    return Response({'receta': openai_response}, status=200)
 
 

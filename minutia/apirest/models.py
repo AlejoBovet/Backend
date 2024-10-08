@@ -64,6 +64,8 @@ STATE_MINUTA_CHOICES = [
 class ListaMinuta(models.Model):
     id_lista_minuta = models.AutoField(primary_key=True)
     user = models.ForeignKey(Users, related_name='listas_minuta', on_delete=models.CASCADE)
+    nombre_lista_minuta = models.CharField(max_length=50)  # Nombre de la lista de minuta
+    fecha_creacion = models.DateField(null=True, blank=True)  # Fecha de creación
     fecha_inicio = models.DateField(null=True, blank=True)  # Fecha de inicio
     fecha_termino = models.DateField(null=True, blank=True)  # Fecha de término
     state_minuta = models.CharField(max_length=50, choices=STATE_MINUTA_CHOICES)  # Estado de la minuta
