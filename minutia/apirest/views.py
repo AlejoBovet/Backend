@@ -757,7 +757,7 @@ def minuta_detail(request):
         
     ]
 ))
-def delete_minuta(request):
+def desactivate_minuta(request):
     user_id = request.query_params.get('user_id')
     id_lista_minuta = request.query_params.get('ListaMinuta_id')
 
@@ -791,19 +791,34 @@ def delete_minuta(request):
             location="query",
             schema=coreschema.Integer(description='User ID.')
         ),
-        coreapi.Field(
-            name="dispensa_id",
-            required=True,
-            location="query",
-            schema=coreschema.Integer(description='Dispensa ID.')
-        ),
     ]
 ))
 def minuta_history(request):
     user_id = request.query_params.get('user_id')
-    dispensa_id = request.query_params.get('dispensa_id')
     
-    return Response({'mensasage': 'Operativo'}, status=202)
+    # traer todas las minutas del usuario
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    
+    minutas = ListaMinuta.objects.filter(user=user)
+
+    # Convertir la hora a la zona horaria local (Santiago) para la respuesta
+    santiago_tz = pytz.timezone('America/Santiago')
+    minutas_data = []
+
+    for minuta in minutas:
+        fecha_inicio_local = minuta.fecha_inicio 
+        fecha_termino_local = minuta.fecha_termino
+        minutas_data.append({
+            'id_lista_minuta': minuta.id_lista_minuta,
+            'fecha_inicio': fecha_inicio_local.strftime('%Y-%m-%d'),
+            'fecha_termino': fecha_termino_local,
+            'state_minuta': minuta.state_minuta
+        })
+
+    return Response({'minutas': minutas_data}, status=202)
 
 ## CONSULTAR RECETAS DE ALIMENTOS 
 @api_view(['POST'])
