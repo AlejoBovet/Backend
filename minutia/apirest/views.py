@@ -757,6 +757,7 @@ def minuta_detail(request):
     # Formatear las fechas de las minutas para la respuesta
     minutas_data = [
         {
+            'id_minuta': minuta.id_minuta,
             'type_food': minuta.type_food,
             'name_food': minuta.name_food,
             'fecha': minuta.fecha
@@ -813,11 +814,15 @@ def desactivate_minuta(request):
     except ListaMinuta.DoesNotExist:
         return Response({'error': 'ListaMinuta not found for the user.'}, status=404)
     
-    #cambiar statu de la minuta a inactivo
+    # Cambiar estado de la minuta a inactivo
     lista_minuta.state_minuta = False
     lista_minuta.save()
 
-    return Response({'message': 'Minuta is desactivated.'}, status=200)
+    # Verificar si el estado se ha actualizado correctamente
+    if not lista_minuta.state_minuta:
+        return Response({'message': 'Minuta is deactivated.'}, status=200)
+    else:
+        return Response({'error': 'Failed to deactivate Minuta.'}, status=500)
 
 #CONSULTAR HISTORIAL DE MINUTA DE ALIMENTOS
 @api_view(['GET'])
@@ -903,18 +908,19 @@ def get_receta(request):
         return Response({'error': 'ListaMinuta not found for the user.'}, status=404)
 
     try:
-        alimento = Alimento.objects.get(id_alimento=id_alimento)
-    except Alimento.DoesNotExist:
-        return Response({'error': 'Alimento not found.'}, status=404)
+        minuta = Minuta.objects.get(id_minuta=id_alimento, lista_minuta=lista_minuta)
+    except Minuta.DoesNotExist:
+        return Response({'error': 'Alimento not found in the minuta.'}, status=404)
+
 
     #obtener nombte del alimento
-    name_alimento = alimento.name_alimento
+    name_minuta = minuta.name_food
 
     # se inicializa la api de openai
     client = OpenAI()
     # se crea el prompt para la api
     prompt = f"""
-    Necesito una receta para el alimento {name_alimento}.
+    Necesito una receta para el alimento {name_minuta}.
     """
     # se crea la respuesta de la api
     completion = client.chat.completions.create(
