@@ -5,7 +5,7 @@ from rest_framework.schemas import AutoSchema
 from django.utils import timezone
 from google.cloud import vision
 from openai import OpenAI
-from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta
+from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta
 from .serializer import UsersSerializer,DispensaSerializer
 import coreapi
 import coreschema
@@ -679,6 +679,13 @@ def create_meinuta(request):
         state_minuta=True  # Asumiendo que es un booleano
     )
 
+    # cargar datos a info minuta
+    InfoMinuta.objects.create(
+        lista_minuta=lista_minuta,
+        tipo_dieta=dietary_preference,
+        cantidad_personas=people_number
+    )
+
     for minuta_data in minutas:
         try:
             fecha_minuta = parser.parse(minuta_data['fecha'])
@@ -748,6 +755,9 @@ def minuta_detail(request):
         lista_minuta = ListaMinuta.objects.get(user=user, state_minuta=True)
     except ListaMinuta.DoesNotExist:
         return Response({'error': 'No active minuta found for the user.'}, status=404)
+
+    #obtenere la informacion de la minuta
+    info_minuta = InfoMinuta.objects.get(lista_minuta=lista_minuta)
     
     # Convertir la hora a la zona horaria local (Santiago) para la respuesta
     santiago_tz = pytz.timezone('America/Santiago')
@@ -772,6 +782,11 @@ def minuta_detail(request):
             'fecha_inicio': fecha_inicio_local.strftime('%Y-%m-%d'),
             'fecha_termino': fecha_termino_local,
             'state_minuta': lista_minuta.state_minuta
+
+        },
+        'info_minuta': {
+            'tipo_dieta': info_minuta.tipo_dieta,
+            'cantidad_personas': info_minuta.cantidad_personas
         },
         'minutas': minutas_data
     })
@@ -839,13 +854,14 @@ def desactivate_minuta(request):
 def minuta_history(request):
     user_id = request.query_params.get('user_id')
     
-    # traer todas las minutas del usuario
+    # Traer todas las minutas del usuario
     try:
         user = Users.objects.get(id_user=user_id)
     except Users.DoesNotExist:
         return Response({'error': 'User not found.'}, status=404)
     
     minutas = ListaMinuta.objects.filter(user=user)
+    info_minutas = InfoMinuta.objects.filter(lista_minuta__in=minutas)
 
     # Convertir la hora a la zona horaria local (Santiago) para la respuesta
     santiago_tz = pytz.timezone('America/Santiago')
@@ -854,16 +870,29 @@ def minuta_history(request):
     for minuta in minutas:
         fecha_inicio_local = minuta.fecha_inicio 
         fecha_termino_local = minuta.fecha_termino
+        
+        # Obtener la información de InfoMinuta asociada a la ListaMinuta
+        info_minuta = info_minutas.filter(lista_minuta=minuta).first()
+        
+        if info_minuta:
+            info_minuta_data = {
+                'tipo_dieta': info_minuta.tipo_dieta,
+                'cantidad_personas': info_minuta.cantidad_personas
+            }
+        else:
+            info_minuta_data = None
+
         minutas_data.append({
             'id_lista_minuta': minuta.id_lista_minuta,
             'nombre_lista_minuta': minuta.nombre_lista_minuta,
             'fecha_creacion': minuta.fecha_creacion,
             'fecha_inicio': fecha_inicio_local.strftime('%Y-%m-%d'),
             'fecha_termino': fecha_termino_local,
-            'state_minuta': minuta.state_minuta
+            'state_minuta': minuta.state_minuta,
+            'info_minuta': info_minuta_data
         })
 
-    return Response({'minutas': minutas_data}, status=202)
+    return Response({'minutas': minutas_data}, status=200)
 
 ## CONSULTAR RECETAS DE ALIMENTOS 
 @api_view(['POST'])

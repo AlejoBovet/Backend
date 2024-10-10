@@ -89,6 +89,14 @@ class Minuta(models.Model):
     def __str__(self):
         return f"Minuta {self.id_minuta} - {self.name_food} ({self.type_food})"
 
+class InfoMinuta(models.Model):
+    id_info_minuta = models.AutoField(primary_key=True)
+    lista_minuta = models.ForeignKey(ListaMinuta, related_name='info_minutas', on_delete=models.CASCADE)
+    tipo_dieta = models.CharField(max_length=70)
+    cantidad_personas = models.IntegerField()
+
+    def __str__(self):
+        return f"InfoMinuta {self.id_info_minuta} - {self.tipo_dieta} ({self.cantidad_personas} personas)"
 
 class HistorialAlimentos(models.Model):
     id_historial = models.AutoField(primary_key=True)
