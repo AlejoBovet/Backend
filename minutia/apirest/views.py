@@ -935,22 +935,27 @@ def get_receta(request):
         lista_minuta = ListaMinuta.objects.get(id_lista_minuta=id_lista_minuta, user=user)
     except ListaMinuta.DoesNotExist:
         return Response({'error': 'ListaMinuta not found for the user.'}, status=404)
+    
+    try:
+        info_minuta = InfoMinuta.objects.get(lista_minuta=lista_minuta)
+    except InfoMinuta.DoesNotExist:
+        return Response({'error': 'InfoMinuta not found for the ListaMinuta.'}, status=404)
 
     try:
         minuta = Minuta.objects.get(id_minuta=id_alimento, lista_minuta=lista_minuta)
     except Minuta.DoesNotExist:
         return Response({'error': 'Alimento not found in the minuta.'}, status=404)
 
-
-    #obtener nombte del alimento
+    # Obtener nombre del alimento
     name_minuta = minuta.name_food
+    # Obtener número de personas 
+    people_number = info_minuta.cantidad_personas
 
-
-    # se inicializa la api de openai
+    # Inicializar la API de OpenAI
     client = OpenAI()
     # Crear el prompt para la API
     prompt = f"""
-    Proporciona la receta {name_minuta} . La receta debe ser devuelta en formato JSON, siguiendo esta estructura:
+    Proporciona la receta {name_minuta} para la cantidad de {people_number} personas. La receta debe ser devuelta en formato JSON, siguiendo esta estructura:
 
     {{
       "ingredientes": [
