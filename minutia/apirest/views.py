@@ -916,26 +916,51 @@ def get_receta(request):
     #obtener nombte del alimento
     name_minuta = minuta.name_food
 
+
     # se inicializa la api de openai
     client = OpenAI()
-    # se crea el prompt para la api
+    # Crear el prompt para la API
     prompt = f"""
-    Necesito una receta para el alimento {name_minuta}.
+    Proporciona la receta {name_minuta} . La receta debe ser devuelta en formato JSON, siguiendo esta estructura:
+
+    {{
+      "ingredientes": [
+        {{ "nombre": "ingrediente1", "cantidad": "cantidad1" }},
+        {{ "nombre": "ingrediente2", "cantidad": "cantidad2" }},
+        ...
+      ],
+      "paso_a_paso": [
+        "Paso 1: descripción del primer paso",
+        "Paso 2: descripción del segundo paso",
+        ...
+      ]
+    }}
+    Usa solo los ingredientes y pasos esenciales para crear el plato.
     """
-    # se crea la respuesta de la api
+
+    # Crear la respuesta de la API
     completion = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {
-            "role": "user",
-            "content": prompt
-        }
-    ])
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt}
+        ]
+    )
 
     # Obtener la respuesta de OpenAI
     openai_response = completion.choices[0].message.content
 
-    return Response({'receta': openai_response}, status=200)
+    # Extraer el contenido JSON de la respuesta
+    json_start = openai_response.find('{')
+    json_end = openai_response.rfind('}') + 1
+    json_content = openai_response[json_start:json_end].strip()
+
+    # Parsear la respuesta JSON
+    try:
+        receta = json.loads(json_content)
+    except json.JSONDecodeError:
+        return Response({'error': 'Invalid JSON format in the response.'}, status=400)
+
+    return Response({'receta': receta}, status=200)
 
 
