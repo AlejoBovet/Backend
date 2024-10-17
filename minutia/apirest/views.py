@@ -44,7 +44,7 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "E://Informatica//AppMinutIA//Bac
             name="year_user",
             required=True,
             location="form",
-            schema=coreschema.Integer(description='Year the user register.')
+            schema=coreschema.Integer(description='Year old the user that register.')
         ),
         coreapi.Field(
         name="user_type",
@@ -53,8 +53,17 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "E://Informatica//AppMinutIA//Bac
         schema=coreschema.Enum(
             enum=["trabajador", "estudiante","dueño de casa"],
             description='Type the user register. Allowed values: trabajador, estudiante, dueño de casa.'
-    )
-),
+            )
+        ),
+        coreapi.Field(
+            name="user_sex",
+            required=True,
+            location="form",
+            schema=coreschema.Enum(
+                enum=["masculino", "femenino"],
+                description="sex the user register. Allowed values: masculino, femenino."
+            )
+        ),
     ]
 ))
 def register(request):
@@ -609,6 +618,13 @@ def create_meinuta(request):
     except AttributeError:
         return Response({'error': 'User does not have a dispensa.'}, status=404)
     
+    #validar que no tenga una minuta activa
+    try:
+        lista_minuta = ListaMinuta.objects.get(user=user, state_minuta=True)
+        return Response({'error': 'User already has an active minuta.'}, status=400)
+    except ListaMinuta.DoesNotExist:
+        pass
+    
     # Obtener los alimentos asociados a la despensa
     alimentos_list = dispensa.get_alimentos_details()
 
@@ -754,7 +770,7 @@ def minuta_detail(request):
     try:
         lista_minuta = ListaMinuta.objects.get(user=user, state_minuta=True)
     except ListaMinuta.DoesNotExist:
-        return Response({'error': 'No active minuta found for the user.'}, status=404)
+        return Response({'state_minuta':'False','error': 'No active minuta found for the user.'}, status=404)
 
     #obtenere la informacion de la minuta
     info_minuta = InfoMinuta.objects.get(lista_minuta=lista_minuta)
@@ -775,13 +791,14 @@ def minuta_detail(request):
     ]
 
     return Response({
+        'state_minuta': lista_minuta.state_minuta,
         'lista_minuta': {
             'id_lista_minuta': lista_minuta.id_lista_minuta,
             'nombre_lista_minuta': lista_minuta.nombre_lista_minuta,
             'fecha_creacion': lista_minuta.fecha_creacion,
             'fecha_inicio': fecha_inicio_local.strftime('%Y-%m-%d'),
             'fecha_termino': fecha_termino_local,
-            'state_minuta': lista_minuta.state_minuta
+            
 
         },
         'info_minuta': {

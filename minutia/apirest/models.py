@@ -38,11 +38,9 @@ class Dispensa(models.Model):
     
 
 USER_TYPE_CHOICES = [
-    ('admin', 'Admin'),
-    ('regular', 'Regular'),
-    ('student', 'Estudiante'),
-    ('worker', 'Trabajador'),
-    ('homemaker', 'Dueño de casa'),
+    ('Estudiante', 'Estudiante'),
+    ('Trabajador', 'Trabajador'),
+    ('Ama de casa', 'Ama de casa'),
 ]
 
 class Users(models.Model):
@@ -51,6 +49,8 @@ class Users(models.Model):
     last_name_user = models.CharField(max_length=255)
     year_user = models.IntegerField()
     user_type = models.CharField(max_length=50, choices=USER_TYPE_CHOICES)
+    user_sex = models.CharField(max_length=50, choices=[('M', 'Masculino'), ('F', 'Femenino'), ('O', 'Otro')])
+    date_join = models.DateTimeField(auto_now_add=True)
     dispensa = models.OneToOneField(Dispensa, null=True, blank=True, on_delete=models.SET_NULL)
 
     def __str__(self):
