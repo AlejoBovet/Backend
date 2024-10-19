@@ -242,6 +242,16 @@ def join_aliment(request):
     # Validar que todos los campos estén presentes
     if not all([user_id, name_alimento, unit_measurement, load_alimento]):
         return Response({'error': 'All fields are required.'}, status=400)
+    
+    #control de error de datos ingresados
+    # valiudar que load_alimento sea decimal
+    if not load_alimento.replace('.', '', 1).isdigit():
+        return Response({'error': 'Load alimento must be a decimal number.'}, status=400)
+    
+    # control unit_measurement
+    if unit_measurement not in ['kg', 'gr', 'lt', 'ml']:
+        return Response({'error': 'Unit measurement must be kg, gr, lt or ml.'}, status=400)
+
 
     try:
         user = Users.objects.get(id_user=user_id)
@@ -361,6 +371,13 @@ def delete_alimento(request):
 def delete_all_alimentos(request):
     user_id = request.query_params.get('user_id')
     dispensa_id = request.query_params.get('dispensa_id')
+    
+     # Validar que los campos sean del tipo integer
+    try:
+        user_id = int(user_id)
+        dispensa_id = int(dispensa_id)
+    except (ValueError, TypeError):
+        return Response({'error': 'User ID and Dispensa ID must be integers.'}, status=400)
 
     if not all([user_id, dispensa_id]):
         return Response({'error': 'User ID and Dispensa ID are required.'}, status=400)
@@ -461,6 +478,15 @@ def edit_alimento(request):
         alimento = Alimento.objects.get(id_alimento=alimento_id)
     except Alimento.DoesNotExist:
         return Response({'error': 'Alimento not found.'}, status=404)
+    
+    # Validar que load_alimento sea decimal
+    if not load_alimento.replace('.', '', 1).isdigit():
+        return Response({'error': 'Load alimento must be a decimal number.'}, status=400)
+    
+    # Validar que unit_measurement sea kg, gr, lt o ml
+    if unit_measurement not in ['kg', 'gr', 'lt', 'ml']:
+        return Response({'error': 'Unit measurement must be kg, gr, lt or ml.'}, status=400)
+    
 
     alimento.name_alimento = name_alimento
     alimento.unit_measurement = unit_measurement
@@ -572,7 +598,7 @@ def dispensa_detail(request):
             schema=coreschema.Integer(description='Number of people.')
         ),
         coreapi.Field(
-            name="dietary preference",
+            name="dietary_preference",
             required=True,
             location="form",
             schema=coreschema.String(description='Dietary preference.')
@@ -591,7 +617,7 @@ def create_meinuta(request):
     name_lista_minuta = request.data.get('name_minuta')
     date_start = request.data.get('start_date')
     people_number = request.data.get('people_number')
-    dietary_preference = request.data.get('dietary preference')
+    dietary_preference = request.data.get('dietary_preference')
     type_food = request.data.get('type_food')
 
     if not all([ user_id, dispensa_id, date_start, people_number, dietary_preference, type_food]):
@@ -741,6 +767,37 @@ def create_meinuta(request):
         },
         'minutas': minutas_data
     }, status=201)
+
+#COSULTA si hay una minuta activa
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+    ]
+))
+def active_minuta(request):
+
+    user_id = request.query_params.get('user_id')
+
+    if not user_id:
+        return Response({'error': 'User ID is required.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+
+    try:
+        lista_minuta = ListaMinuta.objects.get(user=user, state_minuta=True)
+    except ListaMinuta.DoesNotExist:
+        return Response({'state_minuta': 'False'}, status=404)
+
+    return Response({'state_minuta': 'True'}, status=200)
  
 #CONSULTAR MINUTA DE ALIMENTOS
 @api_view(['GET'])

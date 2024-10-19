@@ -16,6 +16,7 @@ urlpatterns = [
     re_path('delete_all_alimentos/', views.delete_all_alimentos),
     re_path('dispensa_detail/', views.dispensa_detail),
     re_path('create_minuta/', views.create_meinuta),
+    re_path('statusminute/', views.active_minuta),
     re_path('minuta_detail/', views.minuta_detail),
     re_path('desactivate_minuta/', views.desactivate_minuta),
     re_path('minuta_history/', views.minuta_history),
