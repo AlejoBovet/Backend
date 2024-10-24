@@ -7,6 +7,9 @@ from google.cloud import vision
 from openai import OpenAI
 from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta
 from .serializer import UsersSerializer,DispensaSerializer
+from langchain import OpenAI
+from langchain.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI
 import coreapi
 import coreschema
 import pytz
@@ -19,7 +22,10 @@ from dateutil import parser
 
 #Cargar las keys para google OCT y ChatGPT
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "E://Informatica//AppMinutIA//Backend//ocrappminutia-e3a23be500d4.json"
-#openai.api_key = os.getenv("OPENAI_API_KEY")
+openai_key = os.getenv("OPENAI_API_KEY")
+
+# Cargar el modelo de OpenAI
+llm = ChatOpenAI(model_name="gpt-3.5-turbo", api_key=openai_key)
 
 
 ## REGISTRO DE USUARIOS
@@ -130,35 +136,24 @@ def getinto_ticket(request):
     # Extraer el texto del OCR
     extracted_text = response.full_text_annotation.text
 
-    client = OpenAI()
-    
     # Prompt para la IA
-    prompt = f"""
+    # Definir el template del prompt
+    template = """
     Tengo la siguiente boleta de supermercado: '{extracted_text}'.
     Extrae los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad. Responde en formato JSON de la siguiente manera:
     [
-      {{ "producto": "nombre del producto","unidad": "kg o gr o lt o ml","cantidad": "cantidad" }} 
+    {{ "producto": "nombre del producto", "unidad": "kg o gr o lt o ml", "cantidad": "cantidad" }}
     ]
-    en caso que no puedas determinar la unidad de medida asignar "unidad": "kg" o "unidad": "lt" dependiendo del caso 
+    En caso que no puedas determinar la unidad de medida, asignar "unidad": "kg" o "unidad": "lt" dependiendo del caso.
     """
+    prompt = PromptTemplate(input_variables=["extracted_text"], template=template)
+    formatted_prompt = prompt.format(extracted_text=extracted_text)
+    
+    # Cambia el uso de 'llm' para usar 'invoke'
+    llm_response = llm.invoke(formatted_prompt)
 
-    completion = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {
-            "role": "user",
-            "content": prompt
-        }
-    ])
-
-    # Obtener la respuesta de OpenAI
-    openai_response = completion.choices[0].message.content
-
-    # Extraer el contenido JSON de la respuesta
-    json_start = openai_response.find('[')
-    json_end = openai_response.rfind(']') + 1
-    json_content = openai_response[json_start:json_end].strip()
+    # Accede al contenido del mensaje, si es necesario
+    json_content = llm_response.content.strip()
 
     # Parsear la respuesta JSON
     try:
@@ -196,11 +191,11 @@ def getinto_ticket(request):
 
     # Actualizar el campo de última actualización de la dispensa
     dispensa.ultima_actualizacion = timezone.now()
-    dispensa.save()
+    dispensa.save() 
 
     # Eliminar el archivo PDF temporal
     os.remove(temp_pdf_path)
-
+    #return Response(json_content, status=200)
     return Response({'Message': 'Ingreso de alimentos exitoso'}, status=200)
 
 # Function to join aliment manually
@@ -646,16 +641,15 @@ def create_meinuta(request):
     
     # Obtener los alimentos asociados a la despensa
     alimentos_list = dispensa.get_alimentos_details()
+    
 
     if not alimentos_list:
         return Response({'error': 'No alimentos found in the dispensa.'}, status=400)
+    
 
-    # Crear la lista de minuta
-    # se inicializa la api de openai
-    client = OpenAI()
     # se crea el prompt para la api
     starting_date =  date_start
-    prompt = f"""
+    template = """
     Tengo la siguiente despensa: '{alimentos_list}'. Solo puedes utilizar estos ingredientes.
     Necesito una minuta para {people_number} personas con preferencia {dietary_preference} que incluya {type_food} para los días que alcance la comida, comenzando desde {starting_date}.
     Las fechas deben ser consecutivas y no deben faltar días. Calcula cuántos días puede durar la minuta en función de la cantidad de alimentos disponible. Utiliza la cantidad adecuada de ingredientes por día.
@@ -667,25 +661,15 @@ def create_meinuta(request):
     ]
     """
 
+    prompt = PromptTemplate(input_variables=["extracted_text","alimentos_list", "people_number", "dietary_preference", "type_food", "starting_date"], template=template)
+    formatted_prompt = prompt.format(alimentos_list=alimentos_list, people_number=people_number, dietary_preference=dietary_preference, type_food=type_food, starting_date=starting_date)
+    
+    # Cambia el uso de 'llm' para usar 'invoke'
+    llm_response = llm.invoke(formatted_prompt)
 
-    # se crea la respuesta de la api
-    completion = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {
-            "role": "user",
-            "content": prompt
-        }
-    ])
-
-    # Obtener la respuesta de OpenAI
-    openai_response = completion.choices[0].message.content
-
-    # Extraer el contenido JSON de la respuesta
-    json_start = openai_response.find('[')
-    json_end = openai_response.rfind(']') + 1
-    json_content = openai_response[json_start:json_end].strip()
+    # Accede al contenido del mensaje, si es necesario
+    json_content = llm_response.content.strip()
+   
 
     # Parsear la respuesta JSON
     try:
@@ -1018,10 +1002,12 @@ def get_receta(request):
     # Obtener número de personas 
     people_number = info_minuta.cantidad_personas
 
-    # Inicializar la API de OpenAI
-    client = OpenAI()
+    
+
+    
+
     # Crear el prompt para la API
-    prompt = f"""
+    template ="""
     Proporciona la receta {name_minuta} para la cantidad de {people_number} personas. La receta debe ser devuelta en formato JSON, siguiendo esta estructura:
 
     {{
@@ -1039,22 +1025,14 @@ def get_receta(request):
     Usa solo los ingredientes y pasos esenciales para crear el plato.
     """
 
-    # Crear la respuesta de la API
-    completion = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt}
-        ]
-    )
+    prompt = PromptTemplate(input_variables=[ "name_minuta", "people_number"], template=template)
+    formatted_prompt = prompt.format( name_minuta=name_minuta, people_number=people_number)
+    
+    # Cambia el uso de 'llm' para usar 'invoke'
+    llm_response = llm.invoke(formatted_prompt)
 
-    # Obtener la respuesta de OpenAI
-    openai_response = completion.choices[0].message.content
-
-    # Extraer el contenido JSON de la respuesta
-    json_start = openai_response.find('{')
-    json_end = openai_response.rfind('}') + 1
-    json_content = openai_response[json_start:json_end].strip()
+    # Accede al contenido del mensaje, si es necesario
+    json_content = llm_response.content.strip()
 
     # Parsear la respuesta JSON
     try:
