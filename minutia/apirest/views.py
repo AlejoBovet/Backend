@@ -580,12 +580,6 @@ def dispensa_detail(request):
             schema=coreschema.Integer(description='Dispensa ID.')
         ),
         coreapi.Field(
-            name='name_minuta',
-            required=False,
-            location='form',
-            schema=coreschema.String(description='Name of the minuta.')
-        ),
-        coreapi.Field(
             name='start_date',
             required=True,
             location='form',
@@ -614,7 +608,6 @@ def dispensa_detail(request):
 def create_meinuta(request):
     user_id = request.data.get('user_id')
     dispensa_id = request.data.get('dispensa_id')
-    name_lista_minuta = request.data.get('name_minuta')
     date_start = request.data.get('start_date')
     people_number = request.data.get('people_number')
     dietary_preference = request.data.get('dietary_preference')
@@ -623,8 +616,8 @@ def create_meinuta(request):
     if not all([ user_id, dispensa_id, date_start, people_number, dietary_preference, type_food]):
         return Response({'error': 'All fields are required.'}, status=400)
 
-    if name_lista_minuta is None:
-        name_lista_minuta = f"Minuta {timezone.now().strftime('%d-%m-%Y')}"
+    
+    name_lista_minuta = f"Minuta {timezone.now().strftime('%d-%m-%Y')}"
 
     # Validar el formato de la fecha de inicio
     try:
@@ -714,7 +707,7 @@ def create_meinuta(request):
     # Crear la lista de minuta y asociarla a los alimentos
     lista_minuta = ListaMinuta.objects.create(
         user=user,
-        nombre_lista_minuta=request.data.get('name_minuta'),
+        nombre_lista_minuta=name_lista_minuta,
         fecha_creacion=timezone.now(),
         fecha_inicio=starting_date,
         fecha_termino=fecha_termino,
