@@ -7,7 +7,7 @@ from google.cloud import vision
 from openai import OpenAI
 from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta
 from .serializer import UsersSerializer,DispensaSerializer
-from .notificaciones import verificar_estado_minuta
+from .notificaciones import verificar_estado_minuta, verificar_dispensa
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -1062,6 +1062,33 @@ def obtener_notificacion(request):
     print(usuario)
     mensaje = verificar_estado_minuta(usuario)
     print(mensaje)
+    if mensaje:
+        return Response({"notificacion": mensaje}, status=200)
+    else:
+        return Response({"notificacion": "No tienes nuevas notificaciones"}, status=200)
+
+    
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+        coreapi.Field(
+            name="dispensa_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='Dispensa ID.')
+        ),
+    ]
+))
+def obtener_notificacion_dispensa(request):
+    user_id = request.query_params.get('user_id')
+    dispensa_id = request.query_params.get('dispensa_id')
+    mensaje = verificar_dispensa(user_id,dispensa_id)
     if mensaje:
         return Response({"notificacion": mensaje}, status=200)
     else:
