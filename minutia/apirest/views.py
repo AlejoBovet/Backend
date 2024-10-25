@@ -7,6 +7,7 @@ from google.cloud import vision
 from openai import OpenAI
 from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta
 from .serializer import UsersSerializer,DispensaSerializer
+from .notificaciones import verificar_estado_minuta
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -1042,4 +1043,26 @@ def get_receta(request):
 
     return Response({'receta': receta}, status=200)
 
+# NOTIFICACIONES
 
+#CONSULTAR NOTIFICACIONES
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+    ]
+))
+def obtener_notificacion(request):
+    usuario = request.query_params.get('user_id')
+    print(usuario)
+    mensaje = verificar_estado_minuta(usuario)
+    print(mensaje)
+    if mensaje:
+        return Response({"notificacion": mensaje}, status=200)
+    else:
+        return Response({"notificacion": "No tienes nuevas notificaciones"}, status=200)
