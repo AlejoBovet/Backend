@@ -7,7 +7,7 @@ from google.cloud import vision
 from openai import OpenAI
 from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta
 from .serializer import UsersSerializer,DispensaSerializer
-from .notificaciones import verificar_estado_minuta, verificar_dispensa
+from .notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -643,9 +643,10 @@ def create_meinuta(request):
     # Obtener los alimentos asociados a la despensa
     alimentos_list = dispensa.get_alimentos_details()
     
-
     if not alimentos_list:
         return Response({'error': 'No alimentos found in the dispensa.'}, status=400)
+
+    List_productos = [alimento['id'] for alimento in alimentos_list] 
     
 
     # se crea el prompt para la api
@@ -703,7 +704,8 @@ def create_meinuta(request):
     InfoMinuta.objects.create(
         lista_minuta=lista_minuta,
         tipo_dieta=dietary_preference,
-        cantidad_personas=people_number
+        cantidad_personas=people_number,
+        alimentos_usados_ids=List_productos
     )
 
     for minuta_data in minutas:
@@ -1089,6 +1091,25 @@ def obtener_notificacion_dispensa(request):
     user_id = request.query_params.get('user_id')
     dispensa_id = request.query_params.get('dispensa_id')
     mensaje = verificar_dispensa(user_id,dispensa_id)
+    if mensaje:
+        return Response({"notificacion": mensaje}, status=200)
+    else:
+        return Response({"notificacion": "No tienes nuevas notificaciones"}, status=200)
+
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+    ]
+))
+def uso_productos_para_minuta(request):
+    user_id = request.query_params.get('user_id')
+    mensaje = verificar_alimentos_minuta(user_id)
     if mensaje:
         return Response({"notificacion": mensaje}, status=200)
     else:

@@ -91,6 +91,7 @@ class InfoMinuta(models.Model):
     lista_minuta = models.ForeignKey(ListaMinuta, related_name='info_minutas', on_delete=models.CASCADE)
     tipo_dieta = models.CharField(max_length=70)
     cantidad_personas = models.IntegerField()
+    alimentos_usados_ids = models.JSONField(blank=True, default=list)
 
     def __str__(self):
         return f"InfoMinuta {self.id_info_minuta} - {self.tipo_dieta} ({self.cantidad_personas} personas)"
