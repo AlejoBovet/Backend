@@ -4,10 +4,10 @@ from rest_framework.response import Response
 from rest_framework.schemas import AutoSchema
 from django.utils import timezone
 from google.cloud import vision
-from openai import OpenAI
 from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta
 from .serializer import UsersSerializer,DispensaSerializer
 from .notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta
+from .controlminuta import minimoalimentospersona
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -141,20 +141,27 @@ def getinto_ticket(request):
     # Definir el template del prompt
     template = """
     Tengo la siguiente boleta de supermercado: '{extracted_text}'.
-    Extrae los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad. Responde en formato JSON de la siguiente manera:
+    Extrae los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad. También indica si el alimento se puede utilizar 
+    para desayuno, almuerzo y/o cena, y carga esta información en la clave 'uso_alimento' en formato de lista separada por comas. 
+    Responde en formato JSON de la siguiente manera:
     [
-    {{ "producto": "nombre del producto", "unidad": "kg o gr o lt o ml", "cantidad": "cantidad" }}
+    {{ "producto": "nombre del producto", "unidad": "kg o gr o lt o ml", "cantidad": "cantidad", "uso_alimento": "desayuno, almuerzo, cena" }},
     ]
-    En caso que no puedas determinar la unidad de medida, asignar "unidad": "kg" o "unidad": "lt" dependiendo del caso.
+    Si el alimento es adecuado para más de una comida, enumera todas las opciones en la clave 'uso_alimento' de manera precisa. 
+    Por ejemplo, si el producto es carne, debería aparecer como "uso_alimento": "almuerzo, cena". En caso de que no puedas determinar la unidad de medida, 
+    y el producto es sólido, asigna "unidad": "kg"; si es líquido, asigna "unidad": "lt". Evita usar "unidad" como valor de unidad.
     """
+
     prompt = PromptTemplate(input_variables=["extracted_text"], template=template)
     formatted_prompt = prompt.format(extracted_text=extracted_text)
-    
+    print(formatted_prompt)
     # Cambia el uso de 'llm' para usar 'invoke'
     llm_response = llm.invoke(formatted_prompt)
-
+    print(llm_response)
     # Accede al contenido del mensaje, si es necesario
     json_content = llm_response.content.strip()
+
+    print(json_content)
 
     # Parsear la respuesta JSON
     try:
@@ -181,13 +188,15 @@ def getinto_ticket(request):
         alimento = Alimento.objects.create(
             name_alimento=alimento_data['producto'],
             unit_measurement=alimento_data['unidad'],
-            load_alimento=alimento_data['cantidad']
+            load_alimento=alimento_data['cantidad'],
+            uso_alimento=alimento_data['uso_alimento']
         )
         DispensaAlimento.objects.get_or_create(dispensa=dispensa, alimento=alimento)
         alimentos_guardados.append({
             'producto': alimento.name_alimento,
             'unidad': alimento.unit_measurement,
-            'cantidad': alimento.load_alimento
+            'cantidad': alimento.load_alimento,
+            'uso_alimento': alimento.uso_alimento
         })
 
     # Actualizar el campo de última actualización de la dispensa
@@ -645,6 +654,18 @@ def create_meinuta(request):
     
     if not alimentos_list:
         return Response({'error': 'No alimentos found in the dispensa.'}, status=400)
+   
+    # Validar que tenga la cantidad de alimentos necesarios según la cantidad de personas
+    minimo_alimentos = minimoalimentospersona(alimentos_list, people_number)
+    if minimo_alimentos:
+        print(f"Error: {minimo_alimentos}")
+        return Response({'error': minimo_alimentos}, status=400)
+    
+    # valida si hay alimentos para el tipo de comida seleccionado
+    alimentos_list = [alimento for alimento in alimentos_list if type_food in alimento['uso']]
+    if not alimentos_list:
+        return Response({'error': 'No alimentos found for the selected type of food.'}, status=400)
+        
 
     List_productos = [alimento['id'] for alimento in alimentos_list] 
     
@@ -652,16 +673,23 @@ def create_meinuta(request):
     # se crea el prompt para la api
     starting_date =  date_start
     template = """
-    Tengo la siguiente despensa: '{alimentos_list}'. Solo puedes utilizar estos ingredientes.
-    Necesito una minuta para {people_number} personas con preferencia {dietary_preference} que incluya {type_food} para los días que alcance la comida, comenzando desde {starting_date}.
-    Las fechas deben ser consecutivas y no deben faltar días. Calcula cuántos días puede durar la minuta en función de la cantidad de alimentos disponible. Utiliza la cantidad adecuada de ingredientes por día.
+    Tengo la siguiente despensa: [{alimentos_list}]. Solo puedes utilizar estos ingredientes.
+    Necesito una minuta para {people_number} personas con preferencia {dietary_preference} que incluya {type_food}, comenzando desde {starting_date}.
+    Las fechas deben ser consecutivas y no deben faltar días. Calcula cuántos días puede durar la minuta en función de la cantidad de alimentos disponible, cantidad de personas y preferencia. Utiliza la cantidad adecuada de ingredientes por día.
+    Asegúrate de seleccionar los ingredientes más adecuados para cada tipo de comida (por ejemplo, no uses ingredientes típicos de meriendas para el almuerzo) y respeta la preferencia dietética solicitada (por ejemplo, no incluyas carne en un menú vegano). No uses galletas o crema de cacahuate como comidas principales (desayuno, almuerzo o cena).
+    Aprovecha al máximo todos los ingredientes disponibles en la despensa para crear platos variados y balanceados.
     Responde únicamente en formato JSON. No hagas preguntas ni incluyas información adicional. Proporciona la respuesta en el siguiente formato JSON:
     [
-       {{ "name_food": "nombre del plato" ,
-       "type_food": "tipo de comida",
-       "fecha": ""YYYY-MM-DD""}}     
+    {{ "name_food": "nombre del plato",
+        "type_food": "tipo de comida",
+        "fecha": "YYYY-MM-DD" }}
     ]
-    """
+    Aquí tienes un ejemplo de cómo esta estructurada la despensa:
+    [
+        {{ "producto": "arroz", "unidad": "kg", "cantidad": "2" }},
+        {{ "producto": "pollo", "unidad": "kg", "cantidad": "1" }},
+        ]
+     """
 
     prompt = PromptTemplate(input_variables=["extracted_text","alimentos_list", "people_number", "dietary_preference", "type_food", "starting_date"], template=template)
     formatted_prompt = prompt.format(alimentos_list=alimentos_list, people_number=people_number, dietary_preference=dietary_preference, type_food=type_food, starting_date=starting_date)
