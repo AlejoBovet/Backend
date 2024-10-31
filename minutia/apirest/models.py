@@ -33,7 +33,7 @@ class Dispensa(models.Model):
                 'name': alimento.name_alimento,
                 'unit': alimento.unit_measurement,
                 'load': alimento.load_alimento,
-                'uso': alimento.uso_alimento,
+                'uso_alimento': alimento.uso_alimento,
             }
             for alimento in self.alimentos.all()
         ]
