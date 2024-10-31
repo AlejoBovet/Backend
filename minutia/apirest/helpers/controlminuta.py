@@ -55,3 +55,14 @@ def alimentos_desayuno(lista_alimentos):
 
     return lista_alimentos
 
+def listproduct_minutafilter(product_list, type_food):
+    """
+    Filtra la lista de productos para devolver solo los que corresponden al tipo de comida.
+    """
+    # Crear una lista en mayúsculas para comparación
+    type_food_upper = type_food.upper()
+
+    # Filtrar la lista de productos debe tener al menos un uso de alimento que coincida con el tipo de comida
+    filtered_list = [producto for producto in product_list if producto['uso_alimento'].upper() == type_food_upper]
+
+    return filtered_list

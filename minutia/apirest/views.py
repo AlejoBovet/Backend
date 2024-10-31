@@ -7,8 +7,8 @@ from google.cloud import vision
 from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta
 from .serializer import UsersSerializer,DispensaSerializer
 from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta
-from .helpers.controlminuta import minimoalimentospersona, alimentos_desayuno
-from .helpers.procesoia import extractdataticket, analyzeusoproductos
+from .helpers.controlminuta import minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter
+from .helpers.procesoia import extractdataticket, analyzeusoproductos, makeminuta
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -629,57 +629,29 @@ def create_meinuta(request):
         return Response({'error': 'No alimentos found in the dispensa.'}, status=400)
    
     # Validar que tenga la cantidad de alimentos necesarios según la cantidad de personas
-    minimo_alimentos = minimoalimentospersona(alimentos_list, people_number)
-    if minimo_alimentos:
-        print(f"Error: {minimo_alimentos}")
-        return Response({'error': minimo_alimentos}, status=400)
+    errores = minimoalimentospersona(alimentos_list, people_number)
+    if errores:
+        print(f"Error: {errores}")
+        return Response({'error': errores}, status=400)
     
     # valida si hay alimentos para el tipo de comida seleccionado
-    alimentos_list = [alimento for alimento in alimentos_list if type_food in alimento['uso']]
+    alimentos_list = [alimento for alimento in alimentos_list if type_food in alimento['uso_alimento']]
     if not alimentos_list:
         return Response({'error': 'No alimentos found for the selected type of food.'}, status=400)
+    
+    # Filtrar los alimentos según el tipo de comida
+    alimentos_list = listproduct_minutafilter(alimentos_list, type_food)
         
-
+    # Crear la lista de alimentos usados
     List_productos = [alimento['id'] for alimento in alimentos_list] 
     
-
-    # se crea el prompt para la api
+    # asignar la fecha de inicio
     starting_date =  date_start
-    template = """
-    Tengo la siguiente despensa: [{alimentos_list}]. Solo puedes utilizar estos ingredientes.
-    Necesito una minuta para {people_number} personas con preferencia {dietary_preference} que incluya {type_food}, comenzando desde {starting_date}.
-    Las fechas deben ser consecutivas y no deben faltar días. Calcula cuántos días puede durar la minuta en función de la cantidad de alimentos disponible, cantidad de personas y preferencia. Utiliza la cantidad adecuada de ingredientes por día.
-    Asegúrate de seleccionar los ingredientes más adecuados para cada tipo de comida (por ejemplo, no uses ingredientes típicos de meriendas para el almuerzo) y respeta la preferencia dietética solicitada (por ejemplo, no incluyas carne en un menú vegano). No uses galletas o crema de cacahuate como comidas principales (desayuno, almuerzo o cena).
-    Aprovecha al máximo todos los ingredientes disponibles en la despensa para crear platos variados y balanceados.
-    Responde únicamente en formato JSON. No hagas preguntas ni incluyas información adicional. Proporciona la respuesta en el siguiente formato JSON:
-    [
-    {{ "name_food": "nombre del plato",
-        "type_food": "tipo de comida",
-        "fecha": "YYYY-MM-DD" }}
-    ]
-    Aquí tienes un ejemplo de cómo esta estructurada la despensa:
-    [
-        {{ "producto": "arroz", "unidad": "kg", "cantidad": "2" }},
-        {{ "producto": "pollo", "unidad": "kg", "cantidad": "1" }},
-        ]
-     """
-
-    prompt = PromptTemplate(input_variables=["extracted_text","alimentos_list", "people_number", "dietary_preference", "type_food", "starting_date"], template=template)
-    formatted_prompt = prompt.format(alimentos_list=alimentos_list, people_number=people_number, dietary_preference=dietary_preference, type_food=type_food, starting_date=starting_date)
     
-    # Cambia el uso de 'llm' para usar 'invoke'
-    llm_response = llm.invoke(formatted_prompt)
-
-    # Accede al contenido del mensaje, si es necesario
-    json_content = llm_response.content.strip()
-   
-
-    # Parsear la respuesta JSON
-    try:
-        minutas = json.loads(json_content)
-    except json.JSONDecodeError:
-        return Response({'error': 'Invalid JSON format.'}, status=400)
+    # Crear la minuta
+    minutas = makeminuta(alimentos_list,people_number,dietary_preference,type_food,starting_date)
     
+    # Validar que la respuesta tenga minutas
     if not minutas:
         return Response({'error': 'No minutas found in the response.'}, status=400)
 
