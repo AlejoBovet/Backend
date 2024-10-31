@@ -6,8 +6,9 @@ from django.utils import timezone
 from google.cloud import vision
 from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta
 from .serializer import UsersSerializer,DispensaSerializer
-from .notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta
-from .controlminuta import minimoalimentospersona
+from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta
+from .helpers.controlminuta import minimoalimentospersona, alimentos_desayuno
+from .helpers.procesoia import extractdataticket, analyzeusoproductos
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -137,43 +138,15 @@ def getinto_ticket(request):
     # Extraer el texto del OCR
     extracted_text = response.full_text_annotation.text
 
-    # Prompt para la IA
-    # Definir el template del prompt
-    template = """
-    Tengo la siguiente boleta de supermercado: '{extracted_text}'.
-    Extrae los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad. También indica si el alimento se puede utilizar 
-    para desayuno, almuerzo y/o cena, y carga esta información en la clave 'uso_alimento' en formato de lista separada por comas. 
-    Responde en formato JSON de la siguiente manera:
-    [
-    {{ "producto": "nombre del producto", "unidad": "kg o gr o lt o ml", "cantidad": "cantidad", "uso_alimento": "desayuno, almuerzo, cena" }},
-    ]
-    Si el alimento es adecuado para más de una comida, enumera todas las opciones en la clave 'uso_alimento' de manera precisa. 
-    Por ejemplo, si el producto es carne, debería aparecer como "uso_alimento": "almuerzo, cena". En caso de que no puedas determinar la unidad de medida, 
-    y el producto es sólido, asigna "unidad": "kg"; si es líquido, asigna "unidad": "lt". Evita usar "unidad" como valor de unidad.
-    """
+    #ejecutar funcion modulada para extraer la data
+    alimentos = extractdataticket(extracted_text)
 
-    prompt = PromptTemplate(input_variables=["extracted_text"], template=template)
-    formatted_prompt = prompt.format(extracted_text=extracted_text)
-    print(formatted_prompt)
-    # Cambia el uso de 'llm' para usar 'invoke'
-    llm_response = llm.invoke(formatted_prompt)
-    print(llm_response)
-    # Accede al contenido del mensaje, si es necesario
-    json_content = llm_response.content.strip()
+    #ejecutar asignacion de alimentos a la dispensa
+    alimentos = analyzeusoproductos(alimentos)
 
-    print(json_content)
-
-    # Parsear la respuesta JSON
-    try:
-        alimentos = json.loads(json_content)
-    except json.JSONDecodeError:
-        return Response({'error': 'Invalid JSON format.'}, status=400)
-
-    # Validar que los alimentos tengan valores válidos
-    for alimento in alimentos:
-        if not alimento['cantidad'].replace('.', '', 1).isdigit():
-            return Response({'error': f"El valor de cantidad para el producto {alimento['producto']} no es válido."}, status=400)
-
+    #correcion de aliomentos de desayuno
+    alimentos = alimentos_desayuno(alimentos)
+    
     # Guardar los alimentos en la base de datos
     try:
         user = Users.objects.get(id_user=user_id)
