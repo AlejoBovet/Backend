@@ -8,7 +8,7 @@ from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,
 from .serializer import UsersSerializer,DispensaSerializer
 from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta
 from .helpers.controlminuta import minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter
-from .helpers.procesoia import extractdataticket, analyzeusoproductos, makeminuta
+from .helpers.procesoia import extractdataticket, analyzeusoproductos, makeminuta, getreceta
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -641,6 +641,7 @@ def create_meinuta(request):
     
     # Filtrar los alimentos según el tipo de comida
     alimentos_list = listproduct_minutafilter(alimentos_list, type_food)
+    #print(alimentos_list)
         
     # Crear la lista de alimentos usados
     List_productos = [alimento['id'] for alimento in alimentos_list] 
@@ -979,43 +980,8 @@ def get_receta(request):
     people_number = info_minuta.cantidad_personas
 
     
-
+    receta = getreceta(name_minuta, people_number)
     
-
-    # Crear el prompt para la API
-    template ="""
-    Proporciona la receta {name_minuta} para la cantidad de {people_number} personas. La receta debe ser devuelta en formato JSON, siguiendo esta estructura:
-
-    {{
-      "ingredientes": [
-        {{ "nombre": "ingrediente1", "cantidad": "cantidad1" }},
-        {{ "nombre": "ingrediente2", "cantidad": "cantidad2" }},
-        ...
-      ],
-      "paso_a_paso": [
-        "Paso 1: descripción del primer paso",
-        "Paso 2: descripción del segundo paso",
-        ...
-      ]
-    }}
-    Usa solo los ingredientes y pasos esenciales para crear el plato.
-    """
-
-    prompt = PromptTemplate(input_variables=[ "name_minuta", "people_number"], template=template)
-    formatted_prompt = prompt.format( name_minuta=name_minuta, people_number=people_number)
-    
-    # Cambia el uso de 'llm' para usar 'invoke'
-    llm_response = llm.invoke(formatted_prompt)
-
-    # Accede al contenido del mensaje, si es necesario
-    json_content = llm_response.content.strip()
-
-    # Parsear la respuesta JSON
-    try:
-        receta = json.loads(json_content)
-    except json.JSONDecodeError:
-        return Response({'error': 'Invalid JSON format in the response.'}, status=400)
-
     return Response({'receta': receta}, status=200)
 
 # NOTIFICACIONES
