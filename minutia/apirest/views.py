@@ -6,8 +6,9 @@ from django.utils import timezone
 from google.cloud import vision
 from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta
 from .serializer import UsersSerializer,DispensaSerializer
-from .notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta
-from .controlminuta import minimoalimentospersona
+from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta
+from .helpers.controlminuta import minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter
+from .helpers.procesoia import extractdataticket, analyzeusoproductos, makeminuta, getreceta
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -137,43 +138,15 @@ def getinto_ticket(request):
     # Extraer el texto del OCR
     extracted_text = response.full_text_annotation.text
 
-    # Prompt para la IA
-    # Definir el template del prompt
-    template = """
-    Tengo la siguiente boleta de supermercado: '{extracted_text}'.
-    Extrae los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad. También indica si el alimento se puede utilizar 
-    para desayuno, almuerzo y/o cena, y carga esta información en la clave 'uso_alimento' en formato de lista separada por comas. 
-    Responde en formato JSON de la siguiente manera:
-    [
-    {{ "producto": "nombre del producto", "unidad": "kg o gr o lt o ml", "cantidad": "cantidad", "uso_alimento": "desayuno, almuerzo, cena" }},
-    ]
-    Si el alimento es adecuado para más de una comida, enumera todas las opciones en la clave 'uso_alimento' de manera precisa. 
-    Por ejemplo, si el producto es carne, debería aparecer como "uso_alimento": "almuerzo, cena". En caso de que no puedas determinar la unidad de medida, 
-    y el producto es sólido, asigna "unidad": "kg"; si es líquido, asigna "unidad": "lt". Evita usar "unidad" como valor de unidad.
-    """
+    #ejecutar funcion modulada para extraer la data
+    alimentos = extractdataticket(extracted_text)
 
-    prompt = PromptTemplate(input_variables=["extracted_text"], template=template)
-    formatted_prompt = prompt.format(extracted_text=extracted_text)
-    print(formatted_prompt)
-    # Cambia el uso de 'llm' para usar 'invoke'
-    llm_response = llm.invoke(formatted_prompt)
-    print(llm_response)
-    # Accede al contenido del mensaje, si es necesario
-    json_content = llm_response.content.strip()
+    #ejecutar asignacion de alimentos a la dispensa
+    alimentos = analyzeusoproductos(alimentos)
 
-    print(json_content)
-
-    # Parsear la respuesta JSON
-    try:
-        alimentos = json.loads(json_content)
-    except json.JSONDecodeError:
-        return Response({'error': 'Invalid JSON format.'}, status=400)
-
-    # Validar que los alimentos tengan valores válidos
-    for alimento in alimentos:
-        if not alimento['cantidad'].replace('.', '', 1).isdigit():
-            return Response({'error': f"El valor de cantidad para el producto {alimento['producto']} no es válido."}, status=400)
-
+    #correcion de aliomentos de desayuno
+    alimentos = alimentos_desayuno(alimentos)
+    
     # Guardar los alimentos en la base de datos
     try:
         user = Users.objects.get(id_user=user_id)
@@ -236,6 +209,12 @@ def getinto_ticket(request):
             location="form",
             schema=coreschema.Integer(description='Load of the aliment.')
         ),
+        coreapi.Field(
+            name="uso_alimento",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Use of the aliment.')
+        ),
     ]
 ))
 def join_aliment(request):
@@ -243,9 +222,10 @@ def join_aliment(request):
     name_alimento = request.data.get('name_aliment')
     unit_measurement = request.data.get('unit_measurement')
     load_alimento = request.data.get('load_alimento')
+    uso_alimento = request.data.get('uso_alimento')
 
     # Validar que todos los campos estén presentes
-    if not all([user_id, name_alimento, unit_measurement, load_alimento]):
+    if not all([user_id, name_alimento, unit_measurement, load_alimento, uso_alimento]):
         return Response({'error': 'All fields are required.'}, status=400)
     
     #control de error de datos ingresados
@@ -256,7 +236,10 @@ def join_aliment(request):
     # control unit_measurement
     if unit_measurement not in ['kg', 'gr', 'lt', 'ml']:
         return Response({'error': 'Unit measurement must be kg, gr, lt or ml.'}, status=400)
-
+    
+    # control uso_alimento
+    if uso_alimento not in ['desayuno', 'almuerzo', 'cena','desayuno,almuerzo','desayuno,cena','almuerzo,cena','desayuno,almuerzo,cena']:
+        return Response({'error': 'Use of the aliment must be desayuno, almuerzo, cena, desayuno, almuerzo, desayuno, cena, almuerzo, cena, desayuno, almuerzo, cena.'}, status=400)
 
     try:
         user = Users.objects.get(id_user=user_id)
@@ -270,7 +253,8 @@ def join_aliment(request):
     alimento = Alimento.objects.create(
         name_alimento=name_alimento,
         unit_measurement=unit_measurement,
-        load_alimento=load_alimento
+        load_alimento=load_alimento,
+        uso_alimento=uso_alimento
     )
 
     # Asociar el alimento a la dispensa en la tabla intermedia
@@ -284,7 +268,8 @@ def join_aliment(request):
         'id_alimento': alimento.id_alimento,
         'name_alimento': alimento.name_alimento,
         'unit_measurement': alimento.unit_measurement,
-        'load_alimento': alimento.load_alimento
+        'load_alimento': alimento.load_alimento,
+        'uso_alimento': alimento.uso_alimento
     }}, status=201)
 
 @api_view(['DELETE'])
@@ -656,57 +641,25 @@ def create_meinuta(request):
         return Response({'error': 'No alimentos found in the dispensa.'}, status=400)
    
     # Validar que tenga la cantidad de alimentos necesarios según la cantidad de personas
-    minimo_alimentos = minimoalimentospersona(alimentos_list, people_number)
-    if minimo_alimentos:
-        print(f"Error: {minimo_alimentos}")
-        return Response({'error': minimo_alimentos}, status=400)
+    errores = minimoalimentospersona(alimentos_list, people_number)
+    if errores:
+        print(f"Error: {errores}")
+        return Response({'error': errores}, status=400)
     
-    # valida si hay alimentos para el tipo de comida seleccionado
-    alimentos_list = [alimento for alimento in alimentos_list if type_food in alimento['uso']]
-    if not alimentos_list:
-        return Response({'error': 'No alimentos found for the selected type of food.'}, status=400)
+    # Filtrar los alimentos según el tipo de comida
+    alimentos_list = listproduct_minutafilter(alimentos_list, type_food)
+    #print(alimentos_list)
         
-
+    # Crear la lista de alimentos usados
     List_productos = [alimento['id'] for alimento in alimentos_list] 
     
-
-    # se crea el prompt para la api
+    # asignar la fecha de inicio
     starting_date =  date_start
-    template = """
-    Tengo la siguiente despensa: [{alimentos_list}]. Solo puedes utilizar estos ingredientes.
-    Necesito una minuta para {people_number} personas con preferencia {dietary_preference} que incluya {type_food}, comenzando desde {starting_date}.
-    Las fechas deben ser consecutivas y no deben faltar días. Calcula cuántos días puede durar la minuta en función de la cantidad de alimentos disponible, cantidad de personas y preferencia. Utiliza la cantidad adecuada de ingredientes por día.
-    Asegúrate de seleccionar los ingredientes más adecuados para cada tipo de comida (por ejemplo, no uses ingredientes típicos de meriendas para el almuerzo) y respeta la preferencia dietética solicitada (por ejemplo, no incluyas carne en un menú vegano). No uses galletas o crema de cacahuate como comidas principales (desayuno, almuerzo o cena).
-    Aprovecha al máximo todos los ingredientes disponibles en la despensa para crear platos variados y balanceados.
-    Responde únicamente en formato JSON. No hagas preguntas ni incluyas información adicional. Proporciona la respuesta en el siguiente formato JSON:
-    [
-    {{ "name_food": "nombre del plato",
-        "type_food": "tipo de comida",
-        "fecha": "YYYY-MM-DD" }}
-    ]
-    Aquí tienes un ejemplo de cómo esta estructurada la despensa:
-    [
-        {{ "producto": "arroz", "unidad": "kg", "cantidad": "2" }},
-        {{ "producto": "pollo", "unidad": "kg", "cantidad": "1" }},
-        ]
-     """
-
-    prompt = PromptTemplate(input_variables=["extracted_text","alimentos_list", "people_number", "dietary_preference", "type_food", "starting_date"], template=template)
-    formatted_prompt = prompt.format(alimentos_list=alimentos_list, people_number=people_number, dietary_preference=dietary_preference, type_food=type_food, starting_date=starting_date)
     
-    # Cambia el uso de 'llm' para usar 'invoke'
-    llm_response = llm.invoke(formatted_prompt)
-
-    # Accede al contenido del mensaje, si es necesario
-    json_content = llm_response.content.strip()
-   
-
-    # Parsear la respuesta JSON
-    try:
-        minutas = json.loads(json_content)
-    except json.JSONDecodeError:
-        return Response({'error': 'Invalid JSON format.'}, status=400)
-    
+    # Crear la minuta
+    minutas = makeminuta(alimentos_list,people_number,dietary_preference,type_food,starting_date)
+    #print(minutas)
+    # Validar que la respuesta tenga minutas
     if not minutas:
         return Response({'error': 'No minutas found in the response.'}, status=400)
 
@@ -753,6 +706,13 @@ def create_meinuta(request):
     #santiago_tz = pytz.timezone('America/Santiago')
     fecha_inicio_local = lista_minuta.fecha_inicio
     fecha_termino_local = lista_minuta.fecha_termino
+
+    for alimento_id in List_productos:
+        try:
+            alimento_obj = Alimento.objects.get(id_alimento=alimento_id)
+            alimento_obj.delete()
+        except Alimento.DoesNotExist:
+            print(f"Alimento con ID {alimento_id} no existe.")
 
     # Formatear las fechas de las minutas para la respuesta
     minutas_data = [
@@ -1034,43 +994,8 @@ def get_receta(request):
     people_number = info_minuta.cantidad_personas
 
     
-
+    receta = getreceta(name_minuta, people_number)
     
-
-    # Crear el prompt para la API
-    template ="""
-    Proporciona la receta {name_minuta} para la cantidad de {people_number} personas. La receta debe ser devuelta en formato JSON, siguiendo esta estructura:
-
-    {{
-      "ingredientes": [
-        {{ "nombre": "ingrediente1", "cantidad": "cantidad1" }},
-        {{ "nombre": "ingrediente2", "cantidad": "cantidad2" }},
-        ...
-      ],
-      "paso_a_paso": [
-        "Paso 1: descripción del primer paso",
-        "Paso 2: descripción del segundo paso",
-        ...
-      ]
-    }}
-    Usa solo los ingredientes y pasos esenciales para crear el plato.
-    """
-
-    prompt = PromptTemplate(input_variables=[ "name_minuta", "people_number"], template=template)
-    formatted_prompt = prompt.format( name_minuta=name_minuta, people_number=people_number)
-    
-    # Cambia el uso de 'llm' para usar 'invoke'
-    llm_response = llm.invoke(formatted_prompt)
-
-    # Accede al contenido del mensaje, si es necesario
-    json_content = llm_response.content.strip()
-
-    # Parsear la respuesta JSON
-    try:
-        receta = json.loads(json_content)
-    except json.JSONDecodeError:
-        return Response({'error': 'Invalid JSON format in the response.'}, status=400)
-
     return Response({'receta': receta}, status=200)
 
 # NOTIFICACIONES
