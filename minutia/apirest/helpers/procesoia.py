@@ -4,6 +4,7 @@ from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 import pytz
 import os
+import re
 import json
 from datetime import datetime
 from dateutil import parser
@@ -11,8 +12,8 @@ from dateutil import parser
 openai_key = os.getenv("OPENAI_API_KEY")
 
 # Cargar el modelo de OpenAI
-#llm = ChatOpenAI(model_name="gpt-4-turbo", api_key=openai_key, temperature=0.2)
-llm = ChatOpenAI(model_name="gpt-3.5-turbo", api_key=openai_key)
+llm = ChatOpenAI(model_name="gpt-4-turbo", api_key=openai_key, temperature=0.2)
+#llm = ChatOpenAI(model_name="gpt-3.5-turbo", api_key=openai_key)
 
 # extraccion datos boleta 
 def extractdataticket(extracted_text):
@@ -143,26 +144,28 @@ def analyzeusoproductos(alimentos_list):
 
 
 def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starting_date):
+    print("alimentos_list:", alimentos_list)
     template = """
-    Tengo la siguiente despensa: [{alimentos_list}]. Solo puedes utilizar estos ingredientes.
-    Necesito una minuta para {people_number} personas con preferencia {dietary_preference} que incluya {type_food}, comenzando desde {starting_date}.
+        Tengo la siguiente despensa: {alimentos_list}. Solo puedes utilizar estos ingredientes.
+    Necesito una minuta exclusivamente para {type_food} para {people_number} personas, con preferencia {dietary_preference}, comenzando desde {starting_date}.
     Las fechas deben ser consecutivas y no deben faltar días. Calcula cuántos días puede durar la minuta en función de la cantidad de alimentos disponible, 
     cantidad de personas y preferencia. Utiliza la cantidad adecuada de ingredientes por día.
-    Asegúrate de seleccionar los ingredientes más adecuados para cada tipo de comida (por ejemplo, no uses ingredientes típicos de meriendas para el almuerzo) 
-    y respeta la preferencia dietética solicitada (por ejemplo, no incluyas carne en un menú vegano). 
-    No uses galletas o crema de cacahuate como comidas principales (desayuno, almuerzo o cena).
+    Selecciona únicamente los ingredientes más adecuados para {type_food} (por ejemplo, no uses ingredientes de meriendas o almuerzos si solo se solicita desayuno).
+    Respeta estrictamente la preferencia dietética solicitada (por ejemplo, no incluyas carne en un menú vegano). 
+    No uses galletas o crema de cacahuate como comidas principales.
     Aprovecha al máximo todos los ingredientes disponibles en la despensa para crear platos variados y balanceados.
     Responde únicamente en formato JSON. No hagas preguntas ni incluyas información adicional. Proporciona la respuesta en el siguiente formato JSON:
-    [
+    
     {{ "name_food": "nombre del plato",
-        "type_food": "tipo de comida",
+        "type_food": "{type_food}",
         "fecha": "YYYY-MM-DD" }}
-    ]
+    
     Aquí tienes un ejemplo de cómo esta estructurada la despensa:
     [
-        {{ "producto": "arroz", "unidad": "kg", "cantidad": "2" }},
-        {{ "producto": "pollo", "unidad": "kg", "cantidad": "1" }},
-        ]
+        {{ "producto": "arroz", "unidad": "kg", "cantidad": "2" , "uso_alimento": "almuerzo, cena" }},
+        {{ "producto": "pollo", "unidad": "kg", "cantidad": "1" , "uso_alimento": "almuerzo, cena" }},
+    ]
+
      """
 
     prompt = PromptTemplate(input_variables=["extracted_text","alimentos_list", "people_number", "dietary_preference", "type_food", "starting_date"], template=template)
@@ -171,19 +174,35 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
     # Cambia el uso de 'llm' para usar 'invoke'
     llm_response = llm.invoke(formatted_prompt)
 
-    # Accede al contenido del mensaje, si es necesario
     json_content = llm_response.content.strip()
-   
+    print("Contenido de json_content (repr):", repr(json_content))
 
-    # Parsear la respuesta JSON
+    # Intentar parsear el JSON directamente
     try:
         minutas = json.loads(json_content)
-    except json.JSONDecodeError:
-        return Response({'error': 'Invalid JSON format.'}, status=400)
-    
+        print("Minutas generadas:", minutas)
+    except json.JSONDecodeError as e:
+        print(f"Error al parsear JSON directo: {e}")
+        # Si falla, extraer el bloque JSON si hay texto adicional
+        start = json_content.find('[')
+        end = json_content.rfind(']') + 1  # Incluir el corchete de cierre
+        if start != -1 and end != 0 and start < end:
+            json_data = json_content[start:end]
+            print("JSON extraído:", json_data)
+            try:
+                minutas = json.loads(json_data)
+                print("Minutas generadas tras extraer:", minutas)
+            except json.JSONDecodeError as e:
+                print(f"Error al parsear JSON extraído: {e}")
+                raise ValueError('Formato JSON inválido.')
+        else:
+            print("No se encontró un bloque JSON válido en la respuesta.")
+            raise ValueError('Formato JSON inválido.')
+
     return minutas
 
 def getreceta (name_minuta,people_number):
+    llm = ChatOpenAI(model_name="gpt-3.5-turbo", api_key=openai_key)
     # Crear el prompt para la API
     template ="""
     Proporciona la receta {name_minuta} para la cantidad de {people_number} personas. La receta debe ser devuelta en formato JSON, siguiendo esta estructura:

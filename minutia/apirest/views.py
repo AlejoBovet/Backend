@@ -209,6 +209,12 @@ def getinto_ticket(request):
             location="form",
             schema=coreschema.Integer(description='Load of the aliment.')
         ),
+        coreapi.Field(
+            name="uso_alimento",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Use of the aliment.')
+        ),
     ]
 ))
 def join_aliment(request):
@@ -216,9 +222,10 @@ def join_aliment(request):
     name_alimento = request.data.get('name_aliment')
     unit_measurement = request.data.get('unit_measurement')
     load_alimento = request.data.get('load_alimento')
+    uso_alimento = request.data.get('uso_alimento')
 
     # Validar que todos los campos estén presentes
-    if not all([user_id, name_alimento, unit_measurement, load_alimento]):
+    if not all([user_id, name_alimento, unit_measurement, load_alimento, uso_alimento]):
         return Response({'error': 'All fields are required.'}, status=400)
     
     #control de error de datos ingresados
@@ -229,7 +236,10 @@ def join_aliment(request):
     # control unit_measurement
     if unit_measurement not in ['kg', 'gr', 'lt', 'ml']:
         return Response({'error': 'Unit measurement must be kg, gr, lt or ml.'}, status=400)
-
+    
+    # control uso_alimento
+    if uso_alimento not in ['desayuno', 'almuerzo', 'cena','desayuno,almuerzo','desayuno,cena','almuerzo,cena','desayuno,almuerzo,cena']:
+        return Response({'error': 'Use of the aliment must be desayuno, almuerzo, cena, desayuno, almuerzo, desayuno, cena, almuerzo, cena, desayuno, almuerzo, cena.'}, status=400)
 
     try:
         user = Users.objects.get(id_user=user_id)
@@ -243,7 +253,8 @@ def join_aliment(request):
     alimento = Alimento.objects.create(
         name_alimento=name_alimento,
         unit_measurement=unit_measurement,
-        load_alimento=load_alimento
+        load_alimento=load_alimento,
+        uso_alimento=uso_alimento
     )
 
     # Asociar el alimento a la dispensa en la tabla intermedia
@@ -257,7 +268,8 @@ def join_aliment(request):
         'id_alimento': alimento.id_alimento,
         'name_alimento': alimento.name_alimento,
         'unit_measurement': alimento.unit_measurement,
-        'load_alimento': alimento.load_alimento
+        'load_alimento': alimento.load_alimento,
+        'uso_alimento': alimento.uso_alimento
     }}, status=201)
 
 @api_view(['DELETE'])
@@ -634,11 +646,6 @@ def create_meinuta(request):
         print(f"Error: {errores}")
         return Response({'error': errores}, status=400)
     
-    # valida si hay alimentos para el tipo de comida seleccionado
-    alimentos_list = [alimento for alimento in alimentos_list if type_food in alimento['uso_alimento']]
-    if not alimentos_list:
-        return Response({'error': 'No alimentos found for the selected type of food.'}, status=400)
-    
     # Filtrar los alimentos según el tipo de comida
     alimentos_list = listproduct_minutafilter(alimentos_list, type_food)
     #print(alimentos_list)
@@ -651,7 +658,7 @@ def create_meinuta(request):
     
     # Crear la minuta
     minutas = makeminuta(alimentos_list,people_number,dietary_preference,type_food,starting_date)
-    
+    #print(minutas)
     # Validar que la respuesta tenga minutas
     if not minutas:
         return Response({'error': 'No minutas found in the response.'}, status=400)
