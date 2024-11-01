@@ -7,13 +7,6 @@ min_productos_por_personas = [
     (5, 20), # 5 personas necesitan un mínimo de 20 productos
 ]
 
-PRODUCTOS_DESAYUNO = [
-    "SINGLES MILK", "CHOCOLATE ORLY", "GALL OREO SIXPAK", "BARRA 200G", "GALLETA CAPUC", "FRAC CLASICA", "GALL MOROCHA",
-    "YOGURT", "CEREAL", "PAN INTEGRAL", "PAN DE MOLDE", "LECHE", "QUESO", "MERMELADA", "CAFÉ", "TÉ",
-    "GALLETAS DE AVENA", "FRUTA FRESCA", "JUGO DE NARANJA", "CREMA DE CACAHUATE", "QUESO CREMA", "MUESLI", 
-    "BARRITAS DE GRANOLA", "MIEL"
-]
- 
 def minimoalimentospersona(alimentos_list, numero_personas):
     # Asegurar que numero_personas es un entero
     numero_personas = int(numero_personas)
@@ -40,38 +33,22 @@ def minimoalimentospersona(alimentos_list, numero_personas):
 
     return None
 
-def alimentos_desayuno(lista_alimentos):
-    """
-    Recorre la lista de alimentos y reemplaza 'uso_alimento' con 'desayuno' 
-    para los productos que deben ser usados solo en desayuno.
-    """
-    # Crear una lista en mayúsculas para comparación
-    productos_desayuno_upper = [producto.upper() for producto in PRODUCTOS_DESAYUNO]
 
-    for alimento in lista_alimentos:
-        producto = alimento['producto'].strip().upper()
-        if producto in productos_desayuno_upper:
-            alimento['uso_alimento'] = 'desayuno'
 
-    return lista_alimentos
-
-def listproduct_minutafilter(alimentos_list, type_food):
-    """
-    Filtra los alimentos según el tipo de comida.
-
-    Args:
-        alimentos_list (list): Lista de alimentos.
-        type_food (str): Tipo de comida (desayuno, almuerzo, cena).
-
-    Returns:
-        list: Lista filtrada de alimentos.
-    """
-    type_food_lower = type_food.lower()
-    filtered_list = [
-        alimento for alimento in alimentos_list
-        if type_food_lower in [uso.strip().lower() for uso in alimento.get('uso_alimento', '').split(',')]
-    ]
-    # imprimir alimentos filtrados
-    #print(filtered_list)
-    return filtered_list
-
+""" # Ejemplo de uso
+alimentos_list = [
+    {'id': 194, 'name': 'CAMARON', 'unit': 'kg', 'load': 1.0, 'uso': 'almuerzo, cena'},
+    {'id': 195, 'name': 'CHORIZO RDA', 'unit': 'kg', 'load': 0.8, 'uso': 'almuerzo, cena'},
+    {'id': 196, 'name': 'LONGANICILLA', 'unit': 'kg', 'load': 2.0, 'uso': 'almuerzo, cena'},
+    {'id': 197, 'name': 'PECH DESH PO', 'unit': 'kg', 'load': 1.0, 'uso': 'almuerzo'},
+    {'id': 198, 'name': 'ENTRANA CERD', 'unit': 'kg', 'load': 1.2, 'uso': 'almuerzo'},
+    {'id': 199, 'name': 'COST CERDO', 'unit': 'kg', 'load': 3.0, 'uso': 'almuerzo'},
+    {'id': 200, 'name': 'LONGANIZA 50', 'unit': 'kg', 'load': 0.9, 'uso': 'almuerzo'}
+]
+numero_personas = 3
+print("Verificando mínimos de alimentos por persona...")
+resultado = minimoalimentospersona(alimentos_list, numero_personas)
+if resultado:
+    print(resultado)
+else:
+    print("Se cumplen los mínimos de alimentos.") """

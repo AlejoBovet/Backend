@@ -1,4 +1,4 @@
-from apirest.models import ListaMinuta, DispensaAlimento, InfoMinuta
+from .models import ListaMinuta, DispensaAlimento, InfoMinuta
 
 #funcion para verificar el estado de la minuta del usuario      
 def verificar_estado_minuta(user_id):
