@@ -707,6 +707,13 @@ def create_meinuta(request):
     fecha_inicio_local = lista_minuta.fecha_inicio
     fecha_termino_local = lista_minuta.fecha_termino
 
+    for alimento_id in List_productos:
+        try:
+            alimento_obj = Alimento.objects.get(id_alimento=alimento_id)
+            alimento_obj.delete()
+        except Alimento.DoesNotExist:
+            print(f"Alimento con ID {alimento_id} no existe.")
+
     # Formatear las fechas de las minutas para la respuesta
     minutas_data = [
         {
