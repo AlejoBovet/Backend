@@ -1,4 +1,6 @@
 from apirest.models import ListaMinuta, DispensaAlimento, InfoMinuta
+from .sugerencias import analizar_despensa
+
 
 #funcion para verificar el estado de la minuta del usuario      
 def verificar_estado_minuta(user_id):
@@ -67,3 +69,15 @@ def verificar_alimentos_minuta(user_id):
         return f"En tu despensa hay alimentos que no se utilizaron en la minuta. ¡Recrea tu minuta!"
     else:
         return None
+
+def notificacion_sugerencia(user_id):
+    mensaje_sugerencia = analizar_despensa(user_id)
+
+    if mensaje_sugerencia == "Hay una recomendación para los productos que no utilizaste en tu minuta":
+        return "¡Tienes sugerencias de uso para los alimentos en tu despensa!"
+    elif mensaje_sugerencia == "No hay minuta activa para el usuario.":
+        return "No hay minuta activa para el usuario."
+    elif mensaje_sugerencia == "No hay alimentos en la despensa.":
+        return "No hay alimentos en la despensa."
+    else:
+        return "No generar notificación"

@@ -24,4 +24,6 @@ urlpatterns = [
     re_path('notificaciones1/', views.obtener_notificacion),
     re_path('notificaciones2/', views.obtener_notificacion_dispensa),
     re_path('notificaciones3/', views.uso_productos_para_minuta),
+    re_path('notificaciones4/', views.uso_productos_para_dispensa),
+    re_path('contol_minuta/', views.control_uso_productos),
 ]
