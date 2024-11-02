@@ -110,3 +110,21 @@ class HistorialAlimentos(models.Model):
 
     def __str__(self):
         return f"Historial {self.id_historial} - {self.name_alimento}"
+
+class Sugerencias(models.Model):
+    id_recomendacion = models.AutoField(primary_key=True)
+    user = models.ForeignKey(Users, related_name='recomendaciones', on_delete=models.CASCADE)
+    recomendacion = models.TextField()
+    fecha = models.DateField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Recomendacion {self.id_recomendacion} - {self.user.name_user} {self.user.last_name_user}"
+
+""" class Objetivos (models.Model):
+    id_objetivo = models.AutoField(primary_key=True)
+    user = models.ForeignKey(Users, related_name='objetivos', on_delete=models.CASCADE)
+    objetivo = models.TextField()
+    fecha = models.DateField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Objetivo {self.id_objetivo} - {self.user.name_user} {self.user.last_name_user}" """

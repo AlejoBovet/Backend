@@ -6,8 +6,8 @@ from django.utils import timezone
 from google.cloud import vision
 from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta
 from .serializer import UsersSerializer,DispensaSerializer
-from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta
-from .helpers.controlminuta import minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter
+from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta, notificacion_sugerencia
+from .helpers.controlminuta import minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter,obtener_y_validar_minuta_del_dia
 from .helpers.procesoia import extractdataticket, analyzeusoproductos, makeminuta, getreceta
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
@@ -1018,9 +1018,13 @@ def obtener_notificacion(request):
     mensaje = verificar_estado_minuta(usuario)
     print(mensaje)
     if mensaje:
-        return Response({"notificacion": mensaje}, status=200)
+        return Response ({"notifications": [
+            { "notification": mensaje }
+        ]}, status=200)
     else:
-        return Response({"notificacion": "No tienes nuevas notificaciones"}, status=200)
+        return Response({"notifications": [
+            { "notification": "No tienes nuevas notificaciones" }
+        ]}, status=200)
 
     
 @api_view(['GET'])
@@ -1045,9 +1049,13 @@ def obtener_notificacion_dispensa(request):
     dispensa_id = request.query_params.get('dispensa_id')
     mensaje = verificar_dispensa(user_id,dispensa_id)
     if mensaje:
-        return Response({"notificacion": mensaje}, status=200)
+        return Response ({"notifications": [
+            { "notification": mensaje }
+        ]}, status=200)
     else:
-        return Response({"notificacion": "No tienes nuevas notificaciones"}, status=200)
+        return Response({"notifications": [
+            { "notification": "No tienes nuevas notificaciones" }
+        ]}, status=200)
 
 @api_view(['GET'])
 @schema(AutoSchema(
@@ -1064,6 +1072,59 @@ def uso_productos_para_minuta(request):
     user_id = request.query_params.get('user_id')
     mensaje = verificar_alimentos_minuta(user_id)
     if mensaje:
-        return Response({"notificacion": mensaje}, status=200)
+        return Response ({"notifications": [
+            { "notification": mensaje }
+        ]}, status=200)
     else:
-        return Response({"notificacion": "No tienes nuevas notificaciones"}, status=200)
+        return Response({"notifications": [
+            { "notification": "No tienes nuevas notificaciones" }
+        ]}, status=200)
+    
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+    ]
+))
+def uso_productos_para_dispensa(request):
+    user_id = request.query_params.get('user_id')
+    mensaje = notificacion_sugerencia(user_id)
+    if mensaje:
+        return Response ({"notifications": [
+            { "notification": mensaje }
+        ]}, status=200)
+    else:
+        return Response({"notifications": [
+            { "notification": "No tienes nuevas notificaciones" }
+        ]}, status=200)
+
+
+#Control de uso productos en minuta
+@api_view(['POST'])
+def control_uso_productos(request):
+    user_id = request.data.get('user_id')
+    date_str = request.data.get('date')
+    realizado = request.data.get('realizado')
+
+    if not all([user_id, date_str, realizado]):
+        return Response({'error': 'All fields are required.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+        date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    except ValueError:
+        return Response({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
+
+    resultado = obtener_y_validar_minuta_del_dia(user, date, realizado)
+
+    if resultado['status'] == 'error':
+        return Response({'status': 'error', 'message': resultado['message']}, status=400)
+
+    return Response({'status': 'success', 'message': resultado['message']}, status=200)

@@ -238,3 +238,7 @@ def getreceta (name_minuta,people_number):
         return Response({'error': 'Invalid JSON format in the response.'}, status=400)
 
     return receta
+
+
+    
+    
