@@ -1120,11 +1120,32 @@ def uso_productos_para_dispensa(request):
 
 #Control de uso productos en minuta
 @api_view(['POST'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+        coreapi.Field(
+            name="date",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Date.')
+        ),
+        coreapi.Field(
+            name="realizado",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Realizado.')
+        ),
+    ]
+))
 def control_uso_productos(request):
     user_id = request.data.get('user_id')
     date_str = request.data.get('date')
     realizado = request.data.get('realizado')
-
     if not all([user_id, date_str, realizado]):
         return Response({'error': 'All fields are required.'}, status=400)
 

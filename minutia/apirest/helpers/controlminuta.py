@@ -87,8 +87,18 @@ def listproduct_minutafilter(alimentos_list, type_food):
     return filtered_list
 
 def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
-    
-    #validar si hay una minuta activa
+    """
+    Obtiene y valida la minuta del día del usuario.
+
+    Args:
+        user (Users): El usuario cuya minuta activa se va a consultar.
+        date (datetime.date): La fecha para la cual se va a obtener la comida.
+        realizacion_minuta (str): Parámetro que indica si la minuta se realizó o no.
+
+    Returns:
+        dict: Diccionario con detalles de la minuta del día y el estado de la validación.
+    """
+    # Validar si hay una minuta activa
     try:
         state_minuta_user = ListaMinuta.objects.get(user=user, state_minuta=True)
     except ListaMinuta.DoesNotExist:
@@ -99,19 +109,13 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
     minuta_activa_id = state_minuta_user.id_lista_minuta
     print(f"ID de la minuta activa: {minuta_activa_id}")
 
-    # recuperar minuta completa
-    minuta_activa_total = ListaMinuta.objects.get(id_lista_minuta=minuta_activa_id)
-
-    # recuperar cantidad de personas de la minuta activa
-    cantidad_personas = InfoMinuta.objects.get(lista_minuta=minuta_activa_id).cantidad_personas
     
-    # Obtener la minuta del día
-     # Obtener las minutas del día
+    # Obtener las minutas del día
     minutas_del_dia = Minuta.objects.filter(lista_minuta=minuta_activa_id, fecha=date).all()
 
     if not minutas_del_dia:
         print(f"No hay comida registrada para la fecha {date} en la minuta activa.")
-        return []
+        return {"status": "error", "message": f"No hay comida registrada para la fecha {date} en la minuta activa."}
 
     print(f"Minuta del día: {minutas_del_dia}")
 
@@ -131,8 +135,7 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
             "fecha": minuta.fecha,
             "ingredientes": ingredientes_list
         })
-    print(f"Minuta del día: {minutas_list}")
-    #guardar la minuta del dia en una lista ya que puede ser mas de una minuta
+    
     # obtener id de productos utilizados en la minuta
     alimentos_usados = InfoMinuta.objects.get(lista_minuta=minuta_activa_id).alimentos_usados_ids
     print(f"Alimentos usados en la minuta: {alimentos_usados}")
@@ -147,11 +150,6 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
             "load_alimento": alimento.load_alimento,
         })
     
-    
-    #verificar alimenros recuerados
-    #print("Alimentos usados en la minuta: ", alimentos_usados_list)
-
-    # Validar el parámetro realizacion_minuta
     if str(realizacion_minuta).strip().lower() == "false":
         # Iniciar proceso de IA para analizar qué productos reponer en la despensa
         analisis_reposicion = analizar_repocision_productos(minutas_list, alimentos_usados_list)
@@ -169,11 +167,8 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
                 # Si la cantidad es 0 o menos, volver a enlazarlo a la despensa sin modificar load_alimento
                 alimento_obj.load_alimento = alimento_obj.load_alimento
                 alimento_obj.save()
-                dispensa_alimento = DispensaAlimento(
-                    alimento=alimento_obj,
-                    dispensa=user.dispensa,
-                )
-                dispensa_alimento.save()
+                if not DispensaAlimento.objects.filter(dispensa=user.dispensa, alimento=alimento_obj).exists():
+                    DispensaAlimento.objects.create(dispensa=user.dispensa, alimento=alimento_obj)
             else:
                 # Si la cantidad es mayor a 0, restar y crear un nuevo alimento con la cantidad indicada por la IA
                 alimento_obj.load_alimento = nueva_cantidad
@@ -185,13 +180,10 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
                     uso_alimento=alimento["uso_alimento"],
                 )
                 nuevo_alimento.save()
-                dispensa_alimento = DispensaAlimento(
-                    alimento=nuevo_alimento,
-                    dispensa=user.dispensa,
-                )
-                dispensa_alimento.save()
- 
-        return {"status": "success", "message": "Producto/s repuesto/s a despensa", "analisis_reposicion": "analisis_reposicion"}
+                DispensaAlimento.objects.create(dispensa=user.dispensa, alimento=nuevo_alimento)
+
+        print("La comida ha sido repuesta en la despensa.")
+        return {"status": "success", "message": "Producto/s repuesto/s a despensa", "analisis_reposicion": analisis_reposicion}
 
     # Retornar si la realizacion_minuta es diferente de false , se debe indicar bien hecho compliste la minuta
     return {"status": "success", "message": "Minuta completada correctamente, bien hecho."}
