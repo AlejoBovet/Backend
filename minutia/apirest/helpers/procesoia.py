@@ -146,7 +146,7 @@ def analyzeusoproductos(alimentos_list):
 def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starting_date):
     print("alimentos_list:", alimentos_list)
     template = """
-        Tengo la siguiente despensa: {alimentos_list}. Solo puedes utilizar estos ingredientes.
+    Tengo la siguiente despensa: {alimentos_list} y necesito crear una minuta  Solo puedes utilizar estos ingredientes.
     Necesito una minuta exclusivamente para {type_food} para {people_number} personas, con preferencia {dietary_preference}, comenzando desde {starting_date}.
     Las fechas deben ser consecutivas y no deben faltar días. Calcula cuántos días puede durar la minuta en función de la cantidad de alimentos disponible, 
     cantidad de personas y preferencia. Utiliza la cantidad adecuada de ingredientes por día.
@@ -158,13 +158,21 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
     
     {{ "name_food": "nombre del plato",
         "type_food": "{type_food}",
-        "fecha": "YYYY-MM-DD" }}
+        "fecha": "YYYY-MM-DD",
+         "ingredientes": [
+            {{ "nombre": "ingrediente1", "cantidad": "cantidad1" }},
+            {{ "nombre": "ingrediente2", "cantidad": "cantidad2" }},
+            ...
+        ],
+        }}
     
     Aquí tienes un ejemplo de cómo esta estructurada la despensa:
     [
         {{ "producto": "arroz", "unidad": "kg", "cantidad": "2" , "uso_alimento": "almuerzo, cena" }},
         {{ "producto": "pollo", "unidad": "kg", "cantidad": "1" , "uso_alimento": "almuerzo, cena" }},
     ]
+
+    IMPORTANTE: ASEGURATE DE UTILIZAR TODA LA CANITDAD DE ALIMENTOS DISPONIBLES EN LA DESPENSA
 
      """
 
@@ -240,5 +248,68 @@ def getreceta (name_minuta,people_number):
     return receta
 
 
+def analizar_repocision_productos( minutas_list, alimentos_usados_list):
+    #minuta_activa_dia = minuta_activa_dia
+    alimentos_usados_list = alimentos_usados_list
+    minutas_list = minutas_list
+
+    #print("minuta_activa_dia:", minuta_activa_dia)
+    llm = ChatOpenAI(model_name="gpt-4-turbo", api_key=openai_key,  temperature=0.2)
+    # Crear el prompt para la API
+    template = """
+    Tengo la siguiente minuta completa con los productos planificados: {alimentos_usados_list}.
+    Del día específico, tengo la siguiente minuta activa: {minutas_list} la cual contiene los ingredientes que se planearon usar.
     
+    La minuta del día no se realizó, y necesito reponer únicamente los productos de la minuta del día que no se utilizaron.
+
+    Formato de salida:
+    [
+        {{   
+            "id_alimento": "id del alimento a reponer",
+            "name_alimento": "nombre del producto",
+            "unit_measurement": "kg, gr, lt o ml",
+            "load_alimento": "cantidad exacta a reponer",
+            "uso_alimento": "desayuno, almuerzo, cena"
+        }}
+    ]
+
+    Instrucciones:
+    - Solo incluye los productos de la minuta del día ({minutas_list}) que debían usarse y no se utilizaron.
+    - cruza los nombre de los ingredientes para devolver el id del alimento a reponer
+    """
+
+
+    prompt = PromptTemplate(input_variables=[ "alimentos_usados_list", "minutas_list"], template=template)
+    formatted_prompt = prompt.format(alimentos_usados_list=alimentos_usados_list, minutas_list=minutas_list)
+    
+    # Cambia el uso de 'llm' para usar 'invoke'
+    llm_response = llm.invoke(formatted_prompt)
+    #print("Respuesta de OpenAI:", llm_response)
+    # recorrer la respuesta y extraer el contenido JSON o lista si esta conetnida en []
+    json_content = llm_response.content.strip()
+
+    # Intentar parsear el JSON directamente
+    try:
+        alimentos_reponer = json.loads(json_content)
+        #print("Alimentos a reponer:", alimentos_reponer)
+    except json.JSONDecodeError as e:
+        print(f"Error al parsear JSON directo: {e}")
+        # Si falla, extraer el bloque JSON si hay texto adicional
+        start = json_content.find('[')
+        end = json_content.rfind(']') + 1
+        if start != -1 and end != 0 and start < end:
+            json_data = json_content[start:end]
+            print("JSON extraído:", json_data)
+            try:
+                alimentos_reponer = json.loads(json_data)
+                #print("Alimentos a reponer tras extraer:", alimentos_reponer)
+            except json.JSONDecodeError as e:
+                print(f"Error al parsear JSON extraído: {e}")
+                raise ValueError('Formato JSON inválido.')
+        else:
+            print("No se encontró un bloque JSON válido en la respuesta.")
+            raise ValueError('Formato JSON inválido.')
+        
+    return alimentos_reponer
+
     

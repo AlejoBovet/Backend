@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.schemas import AutoSchema
 from django.utils import timezone
 from google.cloud import vision
-from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta
+from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente
 from .serializer import UsersSerializer,DispensaSerializer
 from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta, notificacion_sugerencia
 from .helpers.controlminuta import minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter,obtener_y_validar_minuta_del_dia
@@ -660,6 +660,7 @@ def create_meinuta(request):
     minutas = makeminuta(alimentos_list,people_number,dietary_preference,type_food,starting_date)
     #print(minutas)
     # Validar que la respuesta tenga minutas
+    print(minutas)
     if not minutas:
         return Response({'error': 'No minutas found in the response.'}, status=400)
 
@@ -695,12 +696,18 @@ def create_meinuta(request):
         except (ValueError, parser.ParserError) as e:
             return Response({'error': f'Invalid date format in minuta: {str(e)}'}, status=400)
         
-        Minuta.objects.create(
+        minuta = Minuta.objects.create(
             lista_minuta=lista_minuta,
             type_food=minuta_data['type_food'],
             name_food=minuta_data['name_food'],
             fecha=fecha_minuta
         )
+        for ingrediente in minuta_data['ingredientes']:
+            MinutaIngrediente.objects.create(
+                id_minuta=minuta,
+                nombre_ingrediente=ingrediente['nombre'],
+                cantidad=ingrediente['cantidad']
+            )
 
     # Convertir la hora a la zona horaria local (Santiago) para la respuesta
     #santiago_tz = pytz.timezone('America/Santiago')
@@ -710,18 +717,24 @@ def create_meinuta(request):
     for alimento_id in List_productos:
         try:
             alimento_obj = Alimento.objects.get(id_alimento=alimento_id)
-            alimento_obj.delete()
+            DispensaAlimento.objects.filter(dispensa=dispensa, alimento=alimento_obj).delete()
         except Alimento.DoesNotExist:
             print(f"Alimento con ID {alimento_id} no existe.")
 
     # Formatear las fechas de las minutas para la respuesta
     minutas_data = [
-        {
-            'type_food': minuta.type_food,
-            'name_food': minuta.name_food,
-            'fecha': minuta.fecha
-        } for minuta in lista_minuta.minutas.all()
-    ]
+            {
+                'type_food': minuta.type_food,
+                'name_food': minuta.name_food,
+                'fecha': minuta.fecha,
+                'ingredientes': [
+                    {
+                        'nombre': ingrediente.nombre_ingrediente,
+                        'cantidad': ingrediente.cantidad
+                    } for ingrediente in minuta.ingredientes.all()
+                ]
+            } for minuta in lista_minuta.minutas.all()
+        ]
 
     return Response({
         'message': 'Minutas added successfully.',
@@ -734,7 +747,8 @@ def create_meinuta(request):
             'state_minuta': lista_minuta.state_minuta
         },
         'minutas': minutas_data
-    }, status=201)
+    }, status=201) 
+    
 
 #COSULTA si hay una minuta activa
 @api_view(['GET'])
