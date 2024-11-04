@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.schemas import AutoSchema
 from django.utils import timezone
 from google.cloud import vision
-from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente
+from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente,Sugerencias
 from .serializer import UsersSerializer,DispensaSerializer
 from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta, notificacion_sugerencia
 from .helpers.controlminuta import minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter,obtener_y_validar_minuta_del_dia
@@ -112,6 +112,9 @@ def register(request):
     ]
 ))
 def getinto_ticket(request):
+    """
+    Endpoint for registering the purchase of a ticket.
+    """
     user_id = request.data.get('user_id') 
     pdf_file = request.FILES.get('file')
 
@@ -218,6 +221,9 @@ def getinto_ticket(request):
     ]
 ))
 def join_aliment(request):
+    """
+    Endpoint for manually adding an aliment to the despensa.
+    """
     user_id = request.data.get('user_id')
     name_alimento = request.data.get('name_aliment')
     unit_measurement = request.data.get('unit_measurement')
@@ -296,6 +302,9 @@ def join_aliment(request):
     ]
 ))
 def delete_alimento(request):
+    """
+    Endpoint for deleting an aliment from the despensa.
+    """
     user_id = request.query_params.get('user_id')
     dispensa_id = request.query_params.get('dispensa_id')
     alimento_id = request.query_params.get('alimento_id')
@@ -359,6 +368,9 @@ def delete_alimento(request):
     ]
 ))
 def delete_all_alimentos(request):
+    """
+    Endpoint for deleting all alimentos from the despensa.
+    """
     user_id = request.query_params.get('user_id')
     dispensa_id = request.query_params.get('dispensa_id')
     
@@ -442,6 +454,9 @@ def delete_all_alimentos(request):
     ]
 ))
 def edit_alimento(request):
+    """
+    Endpoint for editing an aliment in the despensa.
+    """
     user_id = request.data.get('user_id')
     dispensa_id = request.data.get('dispensa_id')
     alimento_id = request.data.get('alimento_id')
@@ -516,6 +531,9 @@ def edit_alimento(request):
     ]
 ))
 def dispensa_detail(request):
+    """
+    Endpoint for getting the details of a user's despensa.
+    """
     user_id = request.query_params.get('user_id')
     dispensa_id = request.query_params.get('dispensa_id')
 
@@ -596,6 +614,9 @@ def dispensa_detail(request):
     ]
 ))
 def create_meinuta(request):
+    """
+    Endpoint for creating a minuta of alimentos.
+    """
     user_id = request.data.get('user_id')
     dispensa_id = request.data.get('dispensa_id')
     date_start = request.data.get('start_date')
@@ -763,6 +784,9 @@ def create_meinuta(request):
     ]
 ))
 def active_minuta(request):
+    """
+    Endpoint for checking if there is an active minuta for the user.
+    """
 
     user_id = request.query_params.get('user_id')
 
@@ -868,6 +892,9 @@ def minuta_detail(request):
     ]
 ))
 def desactivate_minuta(request):
+    """
+    Endpoint for deactivating a minuta of alimentos.
+    """
     user_id = request.query_params.get('user_id')
     id_lista_minuta = request.query_params.get('ListaMinuta_id')
 
@@ -908,6 +935,9 @@ def desactivate_minuta(request):
     ]
 ))
 def minuta_history(request):
+    """
+    Endpoint for getting the history of minutas of alimentos for a user.
+    """
     user_id = request.query_params.get('user_id')
     
     # Traer todas las minutas del usuario
@@ -975,6 +1005,9 @@ def minuta_history(request):
     ]
 ))
 def get_receta(request):
+    """
+    Endpoint for getting the recipe of an aliment in a minuta.
+    """
     user_id = request.data.get('user_id')
     id_alimento = request.data.get('id_alimento')
     id_lista_minuta = request.data.get('id_lista_minuta')
@@ -1027,6 +1060,9 @@ def get_receta(request):
     ]
 ))
 def obtener_notificacion(request):
+    """
+    Endpoint for getting the notifications of a user, alert the user when exist minuta or not.
+    """
     usuario = request.query_params.get('user_id')
     print(usuario)
     mensaje = verificar_estado_minuta(usuario)
@@ -1059,6 +1095,9 @@ def obtener_notificacion(request):
     ]
 ))
 def obtener_notificacion_dispensa(request):
+    """
+    Endpoint for getting the notifications of a user, alert a user for state despensa.
+    """
     user_id = request.query_params.get('user_id')
     dispensa_id = request.query_params.get('dispensa_id')
     mensaje = verificar_dispensa(user_id,dispensa_id)
@@ -1083,6 +1122,9 @@ def obtener_notificacion_dispensa(request):
     ]
 ))
 def uso_productos_para_minuta(request):
+    """
+    Endpoint for getting the notifications of a user, NOT USED.
+    """
     user_id = request.query_params.get('user_id')
     mensaje = verificar_alimentos_minuta(user_id)
     if mensaje:
@@ -1106,6 +1148,9 @@ def uso_productos_para_minuta(request):
     ]
 ))
 def uso_productos_para_dispensa(request):
+    """
+    Endpoint for getting the notifications of a user, for alert exist suggestion for use the productos that not use in minuta and stay in despensa.
+    """
     user_id = request.query_params.get('user_id')
     mensaje = notificacion_sugerencia(user_id)
     if mensaje:
@@ -1143,6 +1188,9 @@ def uso_productos_para_dispensa(request):
     ]
 ))
 def control_uso_productos(request):
+    """
+    Endpoint for controlling the use of products in a minuta.
+    """
     user_id = request.data.get('user_id')
     date_str = request.data.get('date')
     realizado = request.data.get('realizado')
@@ -1163,3 +1211,46 @@ def control_uso_productos(request):
         return Response({'status': 'error', 'message': resultado['message']}, status=400)
 
     return Response({'status': 'success', 'message': resultado['message']}, status=200)
+
+#get sugerence of products
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+        coreapi.Field(
+            name="date",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='Dispensa ID.')
+        ),
+    ]
+))
+def sugerencia_productos(request):
+    """
+    Endpoint for getting the suggestions of products for a user.
+    """
+    user_id = request.query_params.get('user_id')
+    date_str = request.query_params.get('date')
+    
+    if not all([user_id, date_str]):
+        return Response({'error': 'User ID and Date are required.'}, status=400)
+    
+    try:
+        user = Users.objects.get(id_user=user_id)
+        date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    
+    # obtener sugerencia 
+    suggestion_user = Sugerencias.objects.filter(user=user, date=date)
+    if suggestion_user:
+        suggestion = suggestion_user.first().suggestion
+    else:
+        suggestion = "No hay sugerencias para el usuario en la fecha indicada."
+
+    return Response({'suggestion': suggestion}, status=200)

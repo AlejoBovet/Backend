@@ -2,6 +2,7 @@ from rest_framework.response import Response
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
+from .controljson import process_response
 import pytz
 import os
 import re
@@ -49,29 +50,11 @@ def extractdataticket(extracted_text):
     formatted_prompt = prompt.format(extracted_text=extracted_text)
     print("Prompt Formateado:\n", formatted_prompt)
 
-    try:
-        # Ejecutar el modelo AI para obtener la respuesta
-        llm_response = llm(formatted_prompt)  # Invocación correcta según la configuración
-        #print("Respuesta del LLM:\n", llm_response)
+    llm_response = llm(formatted_prompt)
 
-        # Acceder al contenido del mensaje
-        json_content = llm_response.content.strip()
-        #print("Contenido JSON:\n", json_content)
+    json_content = llm_response.content.strip()
 
-        # Parsear la respuesta JSON
-        alimentos = json.loads(json_content)
-    except AttributeError:
-        # Manejo de errores si 'llm_response' no tiene el atributo 'content'
-        print("Error: El objeto de respuesta del LLM no tiene el atributo 'content'.")
-        raise ValueError('Formato de respuesta inválido desde el modelo AI.')
-    except json.JSONDecodeError:
-        # Manejo de errores si la respuesta no es JSON válido
-        print("Error: Respuesta del LLM no es un JSON válido.")
-        raise ValueError('Formato JSON inválido.')
-    except Exception as e:
-        # Manejo de otros posibles errores
-        print(f"Error inesperado en extractdataticket: {e}")
-        raise ValueError(str(e))
+    alimentos=process_response(json_content)
 
     # Validar que los alimentos tengan valores válidos
     for alimento in alimentos:
@@ -110,29 +93,11 @@ def analyzeusoproductos(alimentos_list):
     formatted_prompt = prompt.format(alimentos_list=alimentos_list)
     #print("Prompt Formateado:\n", formatted_prompt)
     
-    try:
-        # Ejecutar el modelo AI para obtener la respuesta
-        llm_response = llm(formatted_prompt)
-        #print("Respuesta del LLM:\n", llm_response)
-    
-        # Acceder al contenido del mensaje
-        json_content = llm_response.content.strip()
-        #print("Contenido JSON:\n", json_content)
-    
-        # Parsear la respuesta JSON
-        usos = json.loads(json_content)
-    except AttributeError:
-        # Manejo de errores si 'llm_response' no tiene el atributo 'content'
-        print("Error: El objeto de respuesta del LLM no tiene el atributo 'content'.")
-        raise ValueError('Formato de respuesta inválido desde el modelo AI.')
-    except json.JSONDecodeError:
-        # Manejo de errores si la respuesta no es JSON válido
-        print("Error: Respuesta del LLM no es un JSON válido.")
-        raise ValueError('Formato JSON inválido.')
-    except Exception as e:
-        # Manejo de otros posibles errores
-        print(f"Error inesperado en analyzeusoproductos: {e}")
-        raise ValueError(str(e))
+    llm_response = llm(formatted_prompt)
+
+    json_content = llm_response.content.strip()
+
+    usos=process_response(json_content)
 
     # Validar que los usos tengan valores válidos
     for uso in usos:
@@ -180,32 +145,12 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
     formatted_prompt = prompt.format(alimentos_list=alimentos_list, people_number=people_number, dietary_preference=dietary_preference, type_food=type_food, starting_date=starting_date)
     
     # Cambia el uso de 'llm' para usar 'invoke'
+    
     llm_response = llm.invoke(formatted_prompt)
-
     json_content = llm_response.content.strip()
     print("Contenido de json_content (repr):", repr(json_content))
-
-    # Intentar parsear el JSON directamente
-    try:
-        minutas = json.loads(json_content)
-        print("Minutas generadas:", minutas)
-    except json.JSONDecodeError as e:
-        print(f"Error al parsear JSON directo: {e}")
-        # Si falla, extraer el bloque JSON si hay texto adicional
-        start = json_content.find('[')
-        end = json_content.rfind(']') + 1  # Incluir el corchete de cierre
-        if start != -1 and end != 0 and start < end:
-            json_data = json_content[start:end]
-            print("JSON extraído:", json_data)
-            try:
-                minutas = json.loads(json_data)
-                print("Minutas generadas tras extraer:", minutas)
-            except json.JSONDecodeError as e:
-                print(f"Error al parsear JSON extraído: {e}")
-                raise ValueError('Formato JSON inválido.')
-        else:
-            print("No se encontró un bloque JSON válido en la respuesta.")
-            raise ValueError('Formato JSON inválido.')
+    
+    minutas=process_response(json_content)
 
     return minutas
 
@@ -238,12 +183,10 @@ def getreceta (name_minuta,people_number):
 
     # Accede al contenido del mensaje, si es necesario
     json_content = llm_response.content.strip()
-
+    print("Contenido de json_content (repr):", repr(json_content))
     # Parsear la respuesta JSON
-    try:
-        receta = json.loads(json_content)
-    except json.JSONDecodeError:
-        return Response({'error': 'Invalid JSON format in the response.'}, status=400)
+    
+    receta=process_response(json_content)
 
     return receta
 
@@ -287,7 +230,7 @@ def analizar_repocision_productos( minutas_list, alimentos_usados_list):
     #print("Respuesta de OpenAI:", llm_response)
     # recorrer la respuesta y extraer el contenido JSON o lista si esta conetnida en []
     json_content = llm_response.content.strip()
-
+    print("Contenido de json_content (repr):", repr(json_content))
     # Intentar parsear el JSON directamente
     try:
         alimentos_reponer = json.loads(json_content)
@@ -299,7 +242,7 @@ def analizar_repocision_productos( minutas_list, alimentos_usados_list):
         end = json_content.rfind(']') + 1
         if start != -1 and end != 0 and start < end:
             json_data = json_content[start:end]
-            print("JSON extraído:", json_data)
+            #print("JSON extraído:", json_data)
             try:
                 alimentos_reponer = json.loads(json_data)
                 #print("Alimentos a reponer tras extraer:", alimentos_reponer)
