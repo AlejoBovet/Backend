@@ -99,6 +99,7 @@ class InfoMinuta(models.Model):
     lista_minuta = models.ForeignKey(ListaMinuta, related_name='info_minutas', on_delete=models.CASCADE)
     tipo_dieta = models.CharField(max_length=70)
     cantidad_personas = models.IntegerField()
+    tipo_alimento = models.JSONField(blank=True,null=True)
     alimentos_usados_ids = models.JSONField(blank=True, default=list)
 
     def __str__(self):
@@ -106,13 +107,11 @@ class InfoMinuta(models.Model):
 
 class HistorialAlimentos(models.Model):
     id_historial = models.AutoField(primary_key=True)
-    alimento_id = models.IntegerField(null=True, blank=True)  # Reemplaza la ForeignKey por un IntegerField
     name_alimento = models.CharField(max_length=255)
     unit_measurement = models.CharField(max_length=255)
-    load_alimento = models.IntegerField()
-    dispensa_id = models.IntegerField(null=True, blank=True)  # Reemplaza la ForeignKey por un IntegerField
-    user_id = models.IntegerField(null=True, blank=True)  # Reemplaza la ForeignKey por un IntegerField
-    date_join = models.DateTimeField(auto_now_add=True)
+    load_alimento = models.DecimalField(max_digits=10, decimal_places=1)
+    user_id = models.IntegerField(null=True, blank=True)
+    uso_alimento = models.CharField(max_length=255)
 
     def __str__(self):
         return f"Historial {self.id_historial} - {self.name_alimento}"

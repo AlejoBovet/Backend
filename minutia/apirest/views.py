@@ -4,11 +4,12 @@ from rest_framework.response import Response
 from rest_framework.schemas import AutoSchema
 from django.utils import timezone
 from google.cloud import vision
-from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente,Sugerencias
+from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente,Sugerencias,HistorialAlimentos
 from .serializer import UsersSerializer,DispensaSerializer
 from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta, notificacion_sugerencia
 from .helpers.controlminuta import minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter,obtener_y_validar_minuta_del_dia
-from .helpers.procesoia import extractdataticket, analyzeusoproductos, makeminuta, getreceta
+from .helpers.procesoia import crear_recomendacion_compra, extractdataticket, analyzeusoproductos, makeminuta, getreceta
+from .helpers.Metricas import calcular_uso_frecuente_por_comida,obtener_dieta_mas_usada,typo_food_mas_utlizado
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -179,6 +180,17 @@ def getinto_ticket(request):
     dispensa.ultima_actualizacion = timezone.now()
     dispensa.save() 
 
+    # guardar alimentos en tabla de HistorialAlimentos
+    for alimento in alimentos_guardados:
+        HistorialAlimentos.objects.create(
+            name_alimento=alimento['producto'],
+            unit_measurement=alimento['unidad'],
+            load_alimento=alimento['cantidad'],
+            uso_alimento=alimento['uso_alimento'],
+            user_id=user.id_user,
+        )
+        
+
     # Eliminar el archivo PDF temporal
     os.remove(temp_pdf_path)
     #return Response(json_content, status=200)
@@ -269,6 +281,16 @@ def join_aliment(request):
     # Actualizar el campo de última actualización de la dispensa
     dispensa.ultima_actualizacion = timezone.now()
     dispensa.save()
+
+    # ingresar alimento en tabla de HistorialAlimentos
+    HistorialAlimentos.objects.create(
+            name_alimento=name_alimento,
+            unit_measurement=unit_measurement,
+            load_alimento=load_alimento,
+            uso_alimento=uso_alimento,
+            user_id=user_id,
+        )
+        
 
     return Response({'message': 'Alimento added successfully.', 'alimento': {
         'id_alimento': alimento.id_alimento,
@@ -451,6 +473,12 @@ def delete_all_alimentos(request):
             location="form",
             schema=coreschema.Integer(description='Load of the aliment.')
         ),
+        coreapi.Field(
+            name="uso_alimento",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Use of the aliment.')
+        ),
     ]
 ))
 def edit_alimento(request):
@@ -463,8 +491,9 @@ def edit_alimento(request):
     name_alimento = request.data.get('name_alimento')
     unit_measurement = request.data.get('unit_measurement')
     load_alimento = request.data.get('load_alimento')
+    uso_alimento = request.data.get('uso_alimento')
 
-    if not all([user_id, dispensa_id, alimento_id, name_alimento, unit_measurement, load_alimento]):
+    if not all([user_id, dispensa_id, alimento_id, name_alimento, unit_measurement, load_alimento, uso_alimento]):
         return Response({'error': 'All fields are required.'}, status=400)
 
     try:
@@ -496,6 +525,7 @@ def edit_alimento(request):
     alimento.name_alimento = name_alimento
     alimento.unit_measurement = unit_measurement
     alimento.load_alimento = load_alimento
+    alimento.uso_alimento = uso_alimento.lower()
     alimento.save()
 
     # Actualizar el campo de última actualización de la dispensa
@@ -506,7 +536,8 @@ def edit_alimento(request):
         'id_alimento': alimento.id_alimento,
         'name_alimento': alimento.name_alimento,
         'unit_measurement': alimento.unit_measurement,
-        'load_alimento': alimento.load_alimento
+        'load_alimento': alimento.load_alimento,
+        'uso_alimento': alimento.uso_alimento
     }}, status=200)
     
 
@@ -661,15 +692,15 @@ def create_meinuta(request):
     if not alimentos_list:
         return Response({'error': 'No alimentos found in the dispensa.'}, status=400)
    
+    # Filtrar los alimentos según el tipo de comida
+    alimentos_list = listproduct_minutafilter(alimentos_list, type_food)
+    #print(alimentos_list)
+
     # Validar que tenga la cantidad de alimentos necesarios según la cantidad de personas
     errores = minimoalimentospersona(alimentos_list, people_number)
     if errores:
         print(f"Error: {errores}")
         return Response({'error': errores}, status=400)
-    
-    # Filtrar los alimentos según el tipo de comida
-    alimentos_list = listproduct_minutafilter(alimentos_list, type_food)
-    #print(alimentos_list)
         
     # Crear la lista de alimentos usados
     List_productos = [alimento['id'] for alimento in alimentos_list] 
@@ -708,7 +739,8 @@ def create_meinuta(request):
         lista_minuta=lista_minuta,
         tipo_dieta=dietary_preference,
         cantidad_personas=people_number,
-        alimentos_usados_ids=List_productos
+        alimentos_usados_ids=List_productos,
+        tipo_alimento=type_food
     )
 
     for minuta_data in minutas:
@@ -735,12 +767,12 @@ def create_meinuta(request):
     fecha_inicio_local = lista_minuta.fecha_inicio
     fecha_termino_local = lista_minuta.fecha_termino
 
-    for alimento_id in List_productos:
+    """ for alimento_id in List_productos:
         try:
             alimento_obj = Alimento.objects.get(id_alimento=alimento_id)
             DispensaAlimento.objects.filter(dispensa=dispensa, alimento=alimento_obj).delete()
         except Alimento.DoesNotExist:
-            print(f"Alimento con ID {alimento_id} no existe.")
+            print(f"Alimento con ID {alimento_id} no existe.") """
 
     # Formatear las fechas de las minutas para la respuesta
     minutas_data = [
@@ -1230,7 +1262,7 @@ def control_uso_productos(request):
         ),
     ]
 ))
-def sugerencia_productos(request):
+def sugerencia_productos_despensa(request):
     """
     Endpoint for getting the suggestions of products for a user.
     """
@@ -1254,3 +1286,58 @@ def sugerencia_productos(request):
         suggestion = "No hay sugerencias para el usuario en la fecha indicada."
 
     return Response({'suggestion': suggestion}, status=200)
+
+# Recomendaciones de compra 
+@api_view(['POST'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+        coreapi.Field(
+            name="type_recommendation",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='Type of recommendation. Allowed values: 1, 2, 3.')
+        ),
+    ]
+))
+def recomendacion_compra(request):
+    """
+    Endpoint for getting the suggestions of products buy for a user.
+    """
+    user_id = request.data.get('user_id')
+    type_recommendation = request.data.get('type_recommendation')
+    print(f"Received type_recommendation: {type_recommendation}")
+
+    if not all([user_id, type_recommendation]):
+        return Response({'error': 'User ID and Type of recommendation are required.'}, status=400)
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+
+    try:
+        type_recommendation = int(type_recommendation)
+    except ValueError:
+        return Response({'error': 'Type of recommendation must be an integer.'}, status=400)
+
+    # Switch para rotar entre las recomendaciones
+    if type_recommendation == 1:
+        recommendation = typo_food_mas_utlizado(user.id_user)
+        context = 'el analicis del usuario indica que la comida mas utilizada es: '
+    elif type_recommendation == 2:
+        recommendation = obtener_dieta_mas_usada(user.id_user)
+        context = 'el analicis del usuario indica que la dieta mas utilizada es: '
+    elif type_recommendation == 3:
+        recommendation = calcular_uso_frecuente_por_comida(user.id_user)
+        context = 'el analicis del usuario indica que el los alimentos mas utilizados en los tipo comidas son: '
+    else:
+        return Response({'error': 'Invalid type of recommendation. Allowed values: 1, 2, 3.'}, status=400)
+    
+    recomendation_ia = crear_recomendacion_compra(recommendation, context)
+
+    return Response({'recommendation': recomendation_ia}, status=200)

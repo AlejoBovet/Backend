@@ -14,7 +14,7 @@ def process_response(response):
             
             # Intentar parsear la respuesta como JSON
             data = json.loads(response)
-            print("Parsed JSON successfully:", data)
+            #print("Parsed JSON successfully:", data)
             break
         except json.JSONDecodeError:
             print("Failed to parse JSON. Trying as string.")
@@ -29,14 +29,14 @@ def process_response(response):
                     # Intentar limpiar la respuesta y parsearla nuevamente
                     response = response.replace("\n", "").replace("\t", "").strip()
                     data = json.loads(response)
-                    print("Cleaned up and parsed JSON successfully:", data)
+                    #print("Cleaned up and parsed JSON successfully:", data)
                     break
                 except json.JSONDecodeError:
                     print("Failed to clean up and parse JSON. Trying as plain string.")
                     try:
                         # Intentar manejar la respuesta como una cadena de texto simple
                         data = str(response)
-                        print("Handled as plain string successfully:", data)
+                        #print("Handled as plain string successfully:", data)
                         break
                     except Exception as e:
                         print("Failed to handle as plain string:", e)

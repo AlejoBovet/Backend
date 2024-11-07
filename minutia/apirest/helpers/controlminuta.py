@@ -110,7 +110,7 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
     print(f"ID de la minuta activa: {minuta_activa_id}")
 
     
-    # Obtener las minutas del día
+    # Obtener la minuta del día
     minutas_del_dia = Minuta.objects.filter(lista_minuta=minuta_activa_id, fecha=date).all()
 
     if not minutas_del_dia:
@@ -164,23 +164,12 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
             nueva_cantidad = alimento_obj.load_alimento - Decimal(alimento["load_alimento"])
             
             if nueva_cantidad <= 0:
-                # Si la cantidad es 0 o menos, volver a enlazarlo a la despensa sin modificar load_alimento
-                alimento_obj.load_alimento = alimento_obj.load_alimento
-                alimento_obj.save()
-                if not DispensaAlimento.objects.filter(dispensa=user.dispensa, alimento=alimento_obj).exists():
-                    DispensaAlimento.objects.create(dispensa=user.dispensa, alimento=alimento_obj)
+                # Si la cantidad es 0 o menos eliminar alimento de despensa y no crear uno nuevo
+                alimento_obj.delete()
             else:
-                # Si la cantidad es mayor a 0, restar y crear un nuevo alimento con la cantidad indicada por la IA
+                # Si la cantidad es mayor a 0, restar cantidad y crear un nuevo alimento
                 alimento_obj.load_alimento = nueva_cantidad
                 alimento_obj.save()
-                nuevo_alimento = Alimento(
-                    name_alimento=alimento["name_alimento"],
-                    unit_measurement=alimento["unit_measurement"],
-                    load_alimento=Decimal(alimento["load_alimento"]),
-                    uso_alimento=alimento["uso_alimento"],
-                )
-                nuevo_alimento.save()
-                DispensaAlimento.objects.create(dispensa=user.dispensa, alimento=nuevo_alimento)
 
         print("La comida ha sido repuesta en la despensa.")
         return {"status": "success", "message": "Producto/s repuesto/s a despensa", "analisis_reposicion": analisis_reposicion}

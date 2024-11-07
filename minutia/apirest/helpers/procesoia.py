@@ -33,6 +33,8 @@ def extractdataticket(extracted_text):
     """
     template = """
     Tengo la siguiente boleta de supermercado: '{extracted_text}'.
+    el formato de la boleta es el siguiente:
+    codigo de producto, nombre del producto, cantidad y al lado pero en otra columna el precio unitario. 
     Extrae los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad en formato JSON de la siguiente manera:
     [
         {{ "producto": "nombre del producto", "unidad": "kg o gr o lt o ml", "cantidad": "cantidad" }}
@@ -48,14 +50,14 @@ def extractdataticket(extracted_text):
     )
 
     formatted_prompt = prompt.format(extracted_text=extracted_text)
-    print("Prompt Formateado:\n", formatted_prompt)
+    #print("Prompt Formateado:\n", formatted_prompt)
 
     llm_response = llm(formatted_prompt)
 
     json_content = llm_response.content.strip()
 
     alimentos=process_response(json_content)
-
+    
     # Validar que los alimentos tengan valores válidos
     for alimento in alimentos:
         cantidad = alimento.get('cantidad', '').replace('.', '', 1)
@@ -255,4 +257,37 @@ def analizar_repocision_productos( minutas_list, alimentos_usados_list):
         
     return alimentos_reponer
 
+def crear_recomendacion_compra(context,metricas_list):
+    metricas_list = metricas_list
+    llm = ChatOpenAI(model_name="gpt-4-turbo", api_key=openai_key,  temperature=0.2)
+    # Crear el prompt para la API
+    template = """
+    {context} {metricas_list}.
+    Necesito una recomendación de compra segun los analicis que hagas de la metrica que te envio.
+
+    Formato de salida:
+    [
+        {{"titulo_recomendacion":"title1"}},{{"recomendacion":"recomendacion1"}},{{"recomendacion":"recomendacion2"}},{{"recomendacion":"recomendacion3"}}
+    ]
+
+    Instrucciones:
+    - realiza un análisis de las métricas de uso de alimentos para determinar qué productos se deben comprar.
+    - si puedes generar recomandcios de mas variadas o diferentes productos es un plus.
+    - recomienda productos que se puedan encontrar en chile.
+    - *solo entrega el formato de salida solicitado.*
+    """
+
+    prompt = PromptTemplate(input_variables=[ "metricas_list","context"], template=template)
+    formatted_prompt = prompt.format(metricas_list=metricas_list,context=context)
+    
+    # Cambia el uso de 'llm' para usar 'invoke'
+    llm_response = llm.invoke(formatted_prompt)
+    #print("Respuesta de OpenAI:", llm_response)
+    # recorrer la respuesta y extraer el contenido JSON o lista si esta conetnida en []
+    json_content = llm_response.content.strip()
+    #print("Contenido de json_content (repr):", repr(json_content))
+    
+    recomendation = process_response(json_content)
+
+    return recomendation
     
