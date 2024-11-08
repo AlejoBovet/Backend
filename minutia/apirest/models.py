@@ -125,11 +125,32 @@ class Sugerencias(models.Model):
     def __str__(self):
         return f"Recomendacion {self.id_recomendacion} - {self.user.name_user} {self.user.last_name_user}"
 
-""" class Objetivos (models.Model):
+
+TIPO_OBJETIVO_CHOICES = [
+    ('minutas completas', 'Minutas completas'),
+    ('lista de minutas completas', 'Lista de minutas completas'),
+    ('vegetales usados', 'Vegetales usados'),
+    ('frutas usadas', 'Frutas usadas'),
+    ('carbohidratos usados', 'Carbohidratos usados'),
+]
+
+class Objetivo(models.Model):
     id_objetivo = models.AutoField(primary_key=True)
     user = models.ForeignKey(Users, related_name='objetivos', on_delete=models.CASCADE)
-    objetivo = models.TextField()
-    fecha = models.DateField(null=True, blank=True)
+    tipo_objetivo = models.CharField(max_length=100, choices=TIPO_OBJETIVO_CHOICES)  # Ej: 'minutas completas', 'vegetales usados'
+    meta_total = models.PositiveIntegerField()  # La cantidad total para cumplir el objetivo (ej. 10 minutas completas)
+    completado = models.BooleanField(default=False)  
+    fecha_creacion = models.DateField(auto_now_add=True)
+     
+    def __str__(self):
+        return f"{self.tipo_objetivo} - {self.user.username}"
+    
+
+class ProgresoObjetivo(models.Model):
+    objetivo = models.ForeignKey(Objetivo, related_name='progresos', on_delete=models.CASCADE)
+    fecha = models.DateField(auto_now_add=True)   
+    progreso_diario = models.PositiveIntegerField()   
+    progreso_acumulado = models.PositiveIntegerField()   
 
     def __str__(self):
-        return f"Objetivo {self.id_objetivo} - {self.user.name_user} {self.user.last_name_user}" """
+        return f"{self.objetivo.tipo_objetivo} - {self.fecha}"

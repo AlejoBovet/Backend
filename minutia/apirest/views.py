@@ -4,8 +4,8 @@ from rest_framework.response import Response
 from rest_framework.schemas import AutoSchema
 from django.utils import timezone
 from google.cloud import vision
-from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente,Sugerencias,HistorialAlimentos
-from .serializer import UsersSerializer,DispensaSerializer
+from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente,Sugerencias,HistorialAlimentos,Objetivo
+from .serializer import ObjetivoSerializer, UsersSerializer,DispensaSerializer
 from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta, notificacion_sugerencia
 from .helpers.controlminuta import minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter,obtener_y_validar_minuta_del_dia
 from .helpers.procesoia import crear_recomendacion_compra, extractdataticket, analyzeusoproductos, makeminuta, getreceta
@@ -79,6 +79,14 @@ def register(request):
     """
     Endpoint for user registration.
     """
+    name_user = request.data.get('name_user')
+    last_name_user = request.data.get('last_name_user')
+    year_user = request.data.get('year_user')
+    user_type = request.data.get('user_type')
+    
+    if not all([name_user, last_name_user, year_user, user_type]):
+        return Response({'error': 'No fueron completados toddos los campos.'}, status=400)
+
     serializer = UsersSerializer(data=request.data)
 
     if serializer.is_valid():
@@ -1138,9 +1146,7 @@ def obtener_notificacion_dispensa(request):
             { "notification": mensaje }
         ]}, status=200)
     else:
-        return Response({"notifications": [
-            { "notification": "No tienes nuevas notificaciones" }
-        ]}, status=200)
+        return Response("False", status=200)
 
 @api_view(['GET'])
 @schema(AutoSchema(
@@ -1341,3 +1347,64 @@ def recomendacion_compra(request):
     recomendation_ia = crear_recomendacion_compra(recommendation, context)
 
     return Response({'recommendation': recomendation_ia}, status=200)
+
+# crear objetivos 
+@api_view(['POST'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+        coreapi.Field(
+            name="tipo_objetivo",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Objetivo.')
+        ),
+        coreapi.Field(
+            name="meta_objetivo",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='meta del objetivo.')
+        ),
+    ]
+))
+def crear_objetivo(request):
+    """
+    Endpoint for creating a objetive for a user.
+    """
+    user_id = request.data.get('user_id')
+    tipo_objetivo = request.data.get('tipo_objetivo')
+    meta_objetivo = request.data.get('meta_objetivo')
+
+    if not all([user_id, tipo_objetivo, meta_objetivo]):
+        return Response({'error': 'User ID, Tipo Objetivo and Meta Objetivo are required.'}, status=400)
+    
+    if tipo_objetivo not in ['Minutas completas','Lista de minutas completas'
+                             ,'Vegetales usados','Frutas usadas','Carbohidratos usados']:
+        return Response({'error': 'Tipo Objetivo must be Minutas completas, Lista de minutas completas, Vegetales usados, Frutas usadas or Carbohidratos usados.'}, status = 400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+
+    try:
+        meta_objetivo = int(meta_objetivo)
+    except ValueError:
+        return Response({'error': 'Meta Objetivo must be an integer.'}, status=400)
+
+   
+    try:
+        objetivo = Objetivo.objects.create(
+            user=user,
+            tipo_objetivo=tipo_objetivo,
+            meta_total=meta_objetivo
+        )
+        objetivo_data = ObjetivoSerializer(objetivo).data
+        return Response({'message': 'Objetivo created successfully.', 'objetivo': objetivo_data}, status=201)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)

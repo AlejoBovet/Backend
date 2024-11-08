@@ -28,4 +28,5 @@ urlpatterns = [
     re_path('contol_minuta/', views.control_uso_productos),
     re_path('control_dispensa/', views.sugerencia_productos_despensa),
     re_path('recomendacion_compra/', views.recomendacion_compra),
+    re_path('crearobjetivo/', views.crear_objetivo),
 ]

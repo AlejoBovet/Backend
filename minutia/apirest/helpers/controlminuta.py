@@ -150,7 +150,7 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
             "load_alimento": alimento.load_alimento,
         })
     
-    if str(realizacion_minuta).strip().lower() == "false":
+    if str(realizacion_minuta).strip().lower() == "true":
         # Iniciar proceso de IA para analizar qué productos reponer en la despensa
         analisis_reposicion = analizar_repocision_productos(minutas_list, alimentos_usados_list)
         print("Respuesta de la IA: ", analisis_reposicion)
