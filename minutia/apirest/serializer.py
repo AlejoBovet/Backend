@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Users, Dispensa, Alimento,DispensaAlimento
+from .models import Users, Dispensa, Alimento,DispensaAlimento, Objetivo
 
 
 # Users Serializer
@@ -32,3 +32,8 @@ class DispensaSerializer(serializers.ModelSerializer):
     def get_alimentos(self, obj):
         dispensa_alimentos = DispensaAlimento.objects.filter(dispensa=obj)
         return DispensaAlimentoSerializer(dispensa_alimentos, many=True).data
+    
+class ObjetivoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Objetivo
+        fields = '__all__'
