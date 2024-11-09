@@ -33,7 +33,7 @@ class Dispensa(models.Model):
                 'name': alimento.name_alimento,
                 'unit': alimento.unit_measurement,
                 'load': alimento.load_alimento,
-                'uso': alimento.uso_alimento,
+                'uso_alimento': alimento.uso_alimento,
             }
             for alimento in self.alimentos.all()
         ]
@@ -87,26 +87,75 @@ class Minuta(models.Model):
 
     def __str__(self):
         return f"Minuta {self.id_minuta} - {self.name_food} ({self.type_food})"
+    
+class MinutaIngrediente(models.Model):
+    id_minuta_ingrediente = models.AutoField(primary_key=True)
+    id_minuta = models.ForeignKey(Minuta, on_delete=models.CASCADE, related_name='ingredientes')
+    nombre_ingrediente = models.CharField(max_length=100)
+    cantidad = models.CharField(max_length=50)
 
 class InfoMinuta(models.Model):
     id_info_minuta = models.AutoField(primary_key=True)
     lista_minuta = models.ForeignKey(ListaMinuta, related_name='info_minutas', on_delete=models.CASCADE)
     tipo_dieta = models.CharField(max_length=70)
     cantidad_personas = models.IntegerField()
+    tipo_alimento = models.JSONField(blank=True,null=True)
     alimentos_usados_ids = models.JSONField(blank=True, default=list)
+    estado_dias = models.JSONField(blank=True, default=list)  # Nueva columna para el estado de los días
 
     def __str__(self):
         return f"InfoMinuta {self.id_info_minuta} - {self.tipo_dieta} ({self.cantidad_personas} personas)"
 
 class HistorialAlimentos(models.Model):
     id_historial = models.AutoField(primary_key=True)
-    alimento_id = models.IntegerField(null=True, blank=True)  # Reemplaza la ForeignKey por un IntegerField
     name_alimento = models.CharField(max_length=255)
     unit_measurement = models.CharField(max_length=255)
-    load_alimento = models.IntegerField()
-    dispensa_id = models.IntegerField(null=True, blank=True)  # Reemplaza la ForeignKey por un IntegerField
-    user_id = models.IntegerField(null=True, blank=True)  # Reemplaza la ForeignKey por un IntegerField
-    date_join = models.DateTimeField(auto_now_add=True)
+    load_alimento = models.DecimalField(max_digits=10, decimal_places=1)
+    user_id = models.IntegerField(null=True, blank=True)
+    uso_alimento = models.CharField(max_length=255)
 
     def __str__(self):
         return f"Historial {self.id_historial} - {self.name_alimento}"
+
+class Sugerencias(models.Model):
+    id_recomendacion = models.AutoField(primary_key=True)
+    user = models.ForeignKey(Users, related_name='recomendaciones', on_delete=models.CASCADE)
+    recomendacion = models.TextField()
+    fecha = models.DateField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Recomendacion {self.id_recomendacion} - {self.user.name_user} {self.user.last_name_user}"
+
+class Objetivo(models.Model):
+    id_objetivo = models.AutoField(primary_key=True)
+    user = models.ForeignKey(Users, related_name='objetivos', on_delete=models.CASCADE)
+    id_tipo_objetivo = models.ForeignKey('TipoObjetivo', on_delete=models.CASCADE)
+    meta_total = models.PositiveIntegerField()  # La cantidad total para cumplir el objetivo (ej. 10 minutas completas)
+    completado = models.BooleanField(default=False)  
+    fecha_creacion = models.DateField(auto_now_add=True)
+     
+    def __str__(self):
+        return f"{self.id_tipo_objetivo.tipo_objetivo} - {self.user}"
+    
+    
+TIPO_OBJETIVO_CHOICES = [
+    ('minutas completas', 'Minutas completas'),
+    ('lista de minutas completas', 'Lista de minutas completas'),
+    ('vegetales usados', 'Vegetales usados'),
+    ('frutas usadas', 'Frutas usadas'),
+    ('carbohidratos usados', 'Carbohidratos usados'),
+]
+
+class TipoObjetivo(models.Model):
+    id_tipo_objetivo = models.AutoField(primary_key=True)
+    tipo_objetivo = models.CharField(max_length=100, choices=TIPO_OBJETIVO_CHOICES) 
+    
+
+class ProgresoObjetivo(models.Model):
+    objetivo = models.ForeignKey(Objetivo, related_name='progresos', on_delete=models.CASCADE)
+    fecha = models.DateField(auto_now_add=True)   
+    progreso_diario = models.PositiveIntegerField()   
+    progreso_acumulado = models.PositiveIntegerField()   
+
+    def __str__(self):
+        return f"{self.objetivo.tipo_objetivo} - {self.fecha}"
