@@ -101,6 +101,7 @@ class InfoMinuta(models.Model):
     cantidad_personas = models.IntegerField()
     tipo_alimento = models.JSONField(blank=True,null=True)
     alimentos_usados_ids = models.JSONField(blank=True, default=list)
+    estado_dias = models.JSONField(blank=True, default=list)  # Nueva columna para el estado de los días
 
     def __str__(self):
         return f"InfoMinuta {self.id_info_minuta} - {self.tipo_dieta} ({self.cantidad_personas} personas)"
@@ -125,7 +126,18 @@ class Sugerencias(models.Model):
     def __str__(self):
         return f"Recomendacion {self.id_recomendacion} - {self.user.name_user} {self.user.last_name_user}"
 
-
+class Objetivo(models.Model):
+    id_objetivo = models.AutoField(primary_key=True)
+    user = models.ForeignKey(Users, related_name='objetivos', on_delete=models.CASCADE)
+    id_tipo_objetivo = models.ForeignKey('TipoObjetivo', on_delete=models.CASCADE)
+    meta_total = models.PositiveIntegerField()  # La cantidad total para cumplir el objetivo (ej. 10 minutas completas)
+    completado = models.BooleanField(default=False)  
+    fecha_creacion = models.DateField(auto_now_add=True)
+     
+    def __str__(self):
+        return f"{self.id_tipo_objetivo.tipo_objetivo} - {self.user}"
+    
+    
 TIPO_OBJETIVO_CHOICES = [
     ('minutas completas', 'Minutas completas'),
     ('lista de minutas completas', 'Lista de minutas completas'),
@@ -134,16 +146,9 @@ TIPO_OBJETIVO_CHOICES = [
     ('carbohidratos usados', 'Carbohidratos usados'),
 ]
 
-class Objetivo(models.Model):
-    id_objetivo = models.AutoField(primary_key=True)
-    user = models.ForeignKey(Users, related_name='objetivos', on_delete=models.CASCADE)
-    tipo_objetivo = models.CharField(max_length=100, choices=TIPO_OBJETIVO_CHOICES)  # Ej: 'minutas completas', 'vegetales usados'
-    meta_total = models.PositiveIntegerField()  # La cantidad total para cumplir el objetivo (ej. 10 minutas completas)
-    completado = models.BooleanField(default=False)  
-    fecha_creacion = models.DateField(auto_now_add=True)
-     
-    def __str__(self):
-        return f"{self.tipo_objetivo} - {self.user.username}"
+class TipoObjetivo(models.Model):
+    id_tipo_objetivo = models.AutoField(primary_key=True)
+    tipo_objetivo = models.CharField(max_length=100, choices=TIPO_OBJETIVO_CHOICES) 
     
 
 class ProgresoObjetivo(models.Model):

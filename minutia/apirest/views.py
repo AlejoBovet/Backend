@@ -4,12 +4,13 @@ from rest_framework.response import Response
 from rest_framework.schemas import AutoSchema
 from django.utils import timezone
 from google.cloud import vision
-from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente,Sugerencias,HistorialAlimentos,Objetivo
+from .models import ProgresoObjetivo, TipoObjetivo, Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente,Sugerencias,HistorialAlimentos,Objetivo
 from .serializer import ObjetivoSerializer, UsersSerializer,DispensaSerializer
 from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta, notificacion_sugerencia
-from .helpers.controlminuta import minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter,obtener_y_validar_minuta_del_dia
+from .helpers.controlminuta import minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter,obtener_y_validar_minuta_del_dia, update_estado_dias
 from .helpers.procesoia import crear_recomendacion_compra, extractdataticket, analyzeusoproductos, makeminuta, getreceta
 from .helpers.Metricas import calcular_uso_frecuente_por_comida,obtener_dieta_mas_usada,typo_food_mas_utlizado
+from .helpers.ControlObjetivos import control_objetivo_minuta
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -24,7 +25,7 @@ from dateutil import parser
 
 
 #Cargar las keys para google OCT y ChatGPT
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "E://Informatica//AppMinutIA//Backend//ocrappminutia-e3a23be500d4.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv("RUTA_KEY_API_VISION")
 openai_key = os.getenv("OPENAI_API_KEY")
 
 # Cargar el modelo de OpenAI
@@ -775,12 +776,15 @@ def create_meinuta(request):
     fecha_inicio_local = lista_minuta.fecha_inicio
     fecha_termino_local = lista_minuta.fecha_termino
 
-    """ for alimento_id in List_productos:
-        try:
-            alimento_obj = Alimento.objects.get(id_alimento=alimento_id)
-            DispensaAlimento.objects.filter(dispensa=dispensa, alimento=alimento_obj).delete()
-        except Alimento.DoesNotExist:
-            print(f"Alimento con ID {alimento_id} no existe.") """
+    # crear lista de estado de dias y guardar en la base de datos con el valor ep
+    estado_dias = []
+    for minuta in lista_minuta.minutas.all():
+        estado_dias.append({
+            'id_minuta': minuta.id_minuta,
+            'state': 'ep'
+        })
+    # cargar en bd el estado de los dias
+    InfoMinuta.objects.filter(lista_minuta=lista_minuta).update(estado_dias=estado_dias)
 
     # Formatear las fechas de las minutas para la respuesta
     minutas_data = [
@@ -1101,7 +1105,9 @@ def get_receta(request):
 ))
 def obtener_notificacion(request):
     """
-    Endpoint for getting the notifications of a user, alert the user when exist minuta or not.
+    Endpoint for getting the notifications of a user, alert the user when exist minuta or not for example
+    1. if exist minuta active generated notification for recorder a user realized minuta.
+    2. if not exist minuta active generated notification for recorder a user not realized minuta and may created minuta plan.
     """
     usuario = request.query_params.get('user_id')
     print(usuario)
@@ -1136,7 +1142,9 @@ def obtener_notificacion(request):
 ))
 def obtener_notificacion_dispensa(request):
     """
-    Endpoint for getting the notifications of a user, alert a user for state despensa.
+    Endpoint for getting the notifications of a user, alert a user in base state despensa for example:
+    1.if despensa is not have product generte notification for join products.
+    2.if despensa is have product generte notification for use products.
     """
     user_id = request.query_params.get('user_id')
     dispensa_id = request.query_params.get('dispensa_id')
@@ -1161,7 +1169,7 @@ def obtener_notificacion_dispensa(request):
 ))
 def uso_productos_para_minuta(request):
     """
-    Endpoint for getting the notifications of a user, NOT USED.
+    Endpoint for getting the notifications of a user, NOT USED NOT USED, you dont ask for why !!!.
     """
     user_id = request.query_params.get('user_id')
     mensaje = verificar_alimentos_minuta(user_id)
@@ -1187,7 +1195,8 @@ def uso_productos_para_minuta(request):
 ))
 def uso_productos_para_dispensa(request):
     """
-    Endpoint for getting the notifications of a user, for alert exist suggestion for use the productos that not use in minuta and stay in despensa.
+    Endpoint for getting the notifications of a user, this alert exist for 
+    generate "notifications" for the user when exist suggestion of use products.
     """
     user_id = request.query_params.get('user_id')
     mensaje = notificacion_sugerencia(user_id)
@@ -1227,7 +1236,7 @@ def uso_productos_para_dispensa(request):
 ))
 def control_uso_productos(request):
     """
-    Endpoint for controlling the use of products in a minuta.
+    Endpoint for controlling the use of products in a minuta, realize discount if realizado is true else not realize changes.
     """
     user_id = request.data.get('user_id')
     date_str = request.data.get('date')
@@ -1245,6 +1254,13 @@ def control_uso_productos(request):
 
     resultado = obtener_y_validar_minuta_del_dia(user, date, realizado)
 
+    #funcion para actualizar data de objetivos
+    control_objetivo_minuta(user,realizado)
+
+    #actualiar info minuta con el estado de los dias
+    #traer el estado de los dias
+    update_estado_dias(user, date, realizado)
+    
     if resultado['status'] == 'error':
         return Response({'status': 'error', 'message': resultado['message']}, status=400)
 
@@ -1270,7 +1286,7 @@ def control_uso_productos(request):
 ))
 def sugerencia_productos_despensa(request):
     """
-    Endpoint for getting the suggestions of products for a user.
+    Endpoint for getting the data suggestions of use products that not use in minuta and stay in despensa.
     """
     user_id = request.query_params.get('user_id')
     date_str = request.query_params.get('date')
@@ -1307,13 +1323,13 @@ def sugerencia_productos_despensa(request):
             name="type_recommendation",
             required=True,
             location="form",
-            schema=coreschema.Integer(description='Type of recommendation. Allowed values: 1, 2, 3.')
+            schema=coreschema.Integer(description='Type of recommendation. Allowed values: 1, 2, 3. (1: Comida más utilizada, 2: Dieta más utilizada, 3: Uso frecuente por comida.)')
         ),
     ]
 ))
 def recomendacion_compra(request):
     """
-    Endpoint for getting the suggestions of products buy for a user.
+    Endpoint for generated recomendation the buy a user based your stadistics, is not notification.
     """
     user_id = request.data.get('user_id')
     type_recommendation = request.data.get('type_recommendation')
@@ -1359,10 +1375,10 @@ def recomendacion_compra(request):
             schema=coreschema.Integer(description='User ID.')
         ),
         coreapi.Field(
-            name="tipo_objetivo",
+            name="id_tipo_objetivo",
             required=True,
             location="form",
-            schema=coreschema.String(description='Objetivo.')
+            schema=coreschema.Integer(description='Objetivo.')
         ),
         coreapi.Field(
             name="meta_objetivo",
@@ -1377,15 +1393,11 @@ def crear_objetivo(request):
     Endpoint for creating a objetive for a user.
     """
     user_id = request.data.get('user_id')
-    tipo_objetivo = request.data.get('tipo_objetivo')
+    id_tipo_objetivo = request.data.get('id_tipo_objetivo')
     meta_objetivo = request.data.get('meta_objetivo')
 
-    if not all([user_id, tipo_objetivo, meta_objetivo]):
+    if not all([user_id, id_tipo_objetivo, meta_objetivo]):
         return Response({'error': 'User ID, Tipo Objetivo and Meta Objetivo are required.'}, status=400)
-    
-    if tipo_objetivo not in ['Minutas completas','Lista de minutas completas'
-                             ,'Vegetales usados','Frutas usadas','Carbohidratos usados']:
-        return Response({'error': 'Tipo Objetivo must be Minutas completas, Lista de minutas completas, Vegetales usados, Frutas usadas or Carbohidratos usados.'}, status = 400)
 
     try:
         user = Users.objects.get(id_user=user_id)
@@ -1396,15 +1408,28 @@ def crear_objetivo(request):
         meta_objetivo = int(meta_objetivo)
     except ValueError:
         return Response({'error': 'Meta Objetivo must be an integer.'}, status=400)
-
-   
+    
+    try:
+        tipo_objetivo = TipoObjetivo.objects.get(id_tipo_objetivo=id_tipo_objetivo)
+    except TipoObjetivo.DoesNotExist:
+        return Response({'error': 'Tipo Objetivo not found.'}, status=404)
+    
+    
     try:
         objetivo = Objetivo.objects.create(
             user=user,
-            tipo_objetivo=tipo_objetivo,
+            id_tipo_objetivo=tipo_objetivo,
             meta_total=meta_objetivo
         )
+         # Crear el progreso inicial en 0 para el nuevo objetivo
+        ProgresoObjetivo.objects.create(
+            objetivo=objetivo,
+            progreso_diario=0,
+            progreso_acumulado=0
+        )
+
         objetivo_data = ObjetivoSerializer(objetivo).data
+
         return Response({'message': 'Objetivo created successfully.', 'objetivo': objetivo_data}, status=201)
     except Exception as e:
         return Response({'error': str(e)}, status=500)

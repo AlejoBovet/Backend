@@ -172,9 +172,73 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
                 alimento_obj.save()
 
         print("La comida ha sido repuesta en la despensa.")
-        return {"status": "success", "message": "Producto/s repuesto/s a despensa", "analisis_reposicion": analisis_reposicion}
+        return {"status": "success", "message": "Minuta completada correctamente, se han desconatdos los productos utlilizados.", "analisis_reposicion": analisis_reposicion}
 
     # Retornar si la realizacion_minuta es diferente de false , se debe indicar bien hecho compliste la minuta
-    return {"status": "success", "message": "Minuta completada correctamente, bien hecho."}
+    return {"status": "success", "message": "No se han descontado productos."}
 
 
+#funcion para actualizar estado_dias en la tabla InfoMinuta
+def update_estado_dias(user_id, date, realizacion_minuta):
+    """
+    Actualiza el estado de los días en la tabla InfoMinuta.
+
+    Args:
+        user_id (int): ID del usuario.
+        date (datetime.date): Fecha para la cual se va a actualizar el estado.
+
+    Returns:
+        None
+    """
+    try:
+        # Obtener la información de la minuta activa del usuario
+        lista_minuta_activa = ListaMinuta.objects.filter(user_id=user_id, state_minuta=True).first()
+        if not lista_minuta_activa:
+            print("No hay minuta activa para el usuario.")
+            return
+
+        # Obtener el id de la minuta del día con la fecha actual
+        minuta_dia = Minuta.objects.filter(lista_minuta=lista_minuta_activa, fecha=date).first()
+        if not minuta_dia:
+            print("No hay minuta para la fecha proporcionada.")
+            return
+
+        # Obtener la información de la minuta
+        info_minuta = InfoMinuta.objects.filter(lista_minuta=lista_minuta_activa).first()
+        if not info_minuta:
+            print("No se encontró información de la minuta.")
+            return
+
+        # Obtener los estados de los días
+        estados_dias = info_minuta.estado_dias or []
+
+        # Filtrar por id de minuta
+        estados_dias = [estado for estado in estados_dias if estado['id_minuta'] != minuta_dia.id_minuta]
+
+        if str(realizacion_minuta).strip().lower() == "true":
+            # Si la minuta se completó, actualizar el estado a 'c'
+            # Actualizar key state correspondiente al id de la minuta
+            estados_dias.append({
+            "id_minuta": minuta_dia.id_minuta,
+            "state": "c"
+            })
+
+            # Guardar los cambios en la base de datos
+            info_minuta.estado_dias = estados_dias
+            info_minuta.save()
+        else:
+            # Si la minuta no se completó, actualizar el estado a 'i'
+            # Actualizar key state correspondiente al id de la minuta
+            estados_dias.append({
+            "id_minuta": minuta_dia.id_minuta,
+            "state": "nc"
+            })
+
+            # Guardar los cambios en la base de datos
+            info_minuta.estado_dias = estados_dias
+            info_minuta.save()
+
+    except Exception as e:
+        print(f"Error al actualizar el estado de los días: {e}")
+
+    return None

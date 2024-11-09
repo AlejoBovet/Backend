@@ -221,6 +221,9 @@ def analizar_repocision_productos( minutas_list, alimentos_usados_list):
     Instrucciones:
     - Solo incluye los productos de la minuta del día ({minutas_list}) que debían usarse y no se utilizaron.
     - cruza los nombre de los ingredientes para devolver el id del alimento a reponer
+    - no entregues productos que no estaban en la minuta del día.
+    - *solo entrega el formato de salida solicitado.*
+    - *no hagas preguntas ni incluyas información adicional.*
     """
 
 
@@ -234,40 +237,8 @@ def analizar_repocision_productos( minutas_list, alimentos_usados_list):
     json_content = llm_response.content.strip()
     print("Contenido de json_content (repr):", repr(json_content))
     # Intentar parsear el JSON directamente
-    try:
-        alimentos_reponer = json.loads(json_content)
-        #print("Alimentos a reponer:", alimentos_reponer)
-    except json.JSONDecodeError as e:
-        print(f"Error al parsear JSON directo: {e}")
-        # Si falla, extraer el bloque JSON si hay texto adicional
-        start = json_content.find('[')
-    end = json_content.rfind(']') + 1
-    if start != -1 and end != 0 and start < end:
-        json_data = json_content[start:end]
-        print("JSON extraído:", json_data)
-        try:
-            alimentos_reponer = json.loads(json_data)
-            print("Alimentos a reponer tras extraer:", alimentos_reponer)
-        except json.JSONDecodeError as e:
-            print(f"Error al parsear JSON extraído: {e}")
-            raise ValueError('Formato JSON inválido.')
-    else:
-        print("No se encontró un bloque JSON válido en la respuesta.")
-        raise ValueError('Formato JSON inválido.')
-
-    # Validar que el JSON extraído sea una lista
-    if not isinstance(alimentos_reponer, list):
-        print("Error: El JSON extraído no es una lista.")
-        raise ValueError('Formato JSON inválido. Se esperaba una lista.')
-
-    # Validar que cada elemento de la lista sea un diccionario con las claves esperadas
-    for alimento in alimentos_reponer:
-        if not isinstance(alimento, dict):
-            print(f"Error: Un elemento del JSON extraído no es un diccionario: {alimento}")
-            raise ValueError('Formato JSON inválido. Se esperaba una lista de diccionarios.')
-        if "id_alimento" not in alimento or "load_alimento" not in alimento:
-            print(f"Error: Un diccionario del JSON extraído no contiene las claves esperadas: {alimento}")
-            raise ValueError('Formato JSON inválido. Faltan claves esperadas en un diccionario.')
+    
+    alimentos_reponer = process_response(json_content)
         
     return alimentos_reponer
 
