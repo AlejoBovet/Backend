@@ -33,9 +33,15 @@ def extractdataticket(extracted_text):
     """
     template = """
     Tengo la siguiente boleta de supermercado: '{extracted_text}'.
-    el formato de la boleta es el siguiente:
-    codigo de producto, nombre del producto, cantidad y al lado pero en otra columna el precio unitario. 
-    Extrae los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad en formato JSON de la siguiente manera:
+    El formato del detalle de productos en la boleta es el siguiente:
+    Cada línea incluye:
+    -Código de producto (numérico).
+    -Nombre del producto.
+    -algunos pueden tener la cantidad del contenido (por ejemplo, '1 kg').
+    -Cantidad del producto (por ejemplo, '8 x' para 8 unidades).
+    -Precio unitario del producto en una columna alineada a la derecha.
+    -Algunos productos pueden tener líneas adicionales que indican descuentos aplicados."
+    Y la tarea que necesito esExtrae los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad en formato JSON de la siguiente manera:
     formato de salida:
     [
         {{ "producto": "nombre del producto", "unidad": "kg o gr o lt o ml", "cantidad": "cantidad" }}
@@ -130,8 +136,8 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
         "type_food": "{type_food}",
         "fecha": "YYYY-MM-DD",
          "ingredientes": [
-            {{ "nombre": "ingrediente1", "cantidad": "cantidad1" }},
-            {{ "nombre": "ingrediente2", "cantidad": "cantidad2" }},
+            {{ "nombre": "ingrediente1", "tipo_medida": "medida1" ,"cantidad": "cantidad1" }},
+            {{ "nombre": "ingrediente2", "tipo_medida": "medida2" ,"cantidad": "cantidad2" }},
             ...
         ],
         }}

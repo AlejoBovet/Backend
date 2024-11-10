@@ -92,6 +92,7 @@ class MinutaIngrediente(models.Model):
     id_minuta_ingrediente = models.AutoField(primary_key=True)
     id_minuta = models.ForeignKey(Minuta, on_delete=models.CASCADE, related_name='ingredientes')
     nombre_ingrediente = models.CharField(max_length=100)
+    tipo_medida = models.CharField(max_length=50)
     cantidad = models.CharField(max_length=50)
 
 class InfoMinuta(models.Model):

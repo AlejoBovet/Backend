@@ -17,6 +17,12 @@ def calcular_uso_frecuente_por_comida(user):
     # Inicializamos un diccionario para almacenar el conteo de cada comida para cada alimento
     uso_frecuente = defaultdict(lambda: {"desayuno": 0, "almuerzo": 0, "cena": 0})
 
+    ## controlar minimos de alimentos para una mejor recomendacion
+    # trar cantidad historica de alimentos del usuario
+    cantidad_alimentos = len(alimentos)
+    if cantidad_alimentos < 30:
+        return None
+
     for alimento in alimentos:
         # Obtenemos el nombre del alimento
         nombre_alimento = alimento.name_alimento
@@ -99,3 +105,34 @@ def typo_food_mas_utlizado(user_id):
         tipo_comida_mas_usado = None
 
     return tipo_comida_mas_usado
+
+def data_minima_recomendacion_compra(user, type_recomendacion):
+    """
+    Controla la data mínima para realizar una recomendación de compra.
+
+    Args:
+        user (User): Usuario para el cual se realiza la recomendación.
+        type_recomendacion (int): Tipo de recomendación.
+
+    Returns:
+        str: "pass" si cumple con los mínimos, en caso contrario "error" para responder que no hay recomendación para el usuario.
+    """
+    user_id = user.id_user  # Obtener el ID del usuario
+
+    if type_recomendacion == 1:
+        # Traer cantidad histórica de alimentos del usuario
+        cantidad_alimentos = HistorialAlimentos.objects.filter(user_id=user_id).count()
+        if cantidad_alimentos < 30:
+            return "error"
+        return "pass"
+    elif type_recomendacion == 2:
+        # Traer cantidad de minutas creadas por el usuario
+        cantidad_minutas = ListaMinuta.objects.filter(user=user).count()
+        if cantidad_minutas < 5:
+            return "error"
+    elif type_recomendacion == 3:
+        cantidad_alimentos = HistorialAlimentos.objects.filter(user_id=user_id).count()
+        cantidad_minutas = ListaMinuta.objects.filter(user=user).count()
+        if cantidad_alimentos < 30 and cantidad_minutas < 3:
+            return "error"
+    return "pass"

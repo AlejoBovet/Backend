@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from ..models import ListaMinuta, Minuta, Alimento, DispensaAlimento, InfoMinuta, MinutaIngrediente
 from .procesoia import analizar_repocision_productos
+from django.utils import timezone
 
 # Cantidad de persona por alimentos
 min_productos_por_personas = [
@@ -128,6 +129,7 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
         ingredientes_list = [
             {
                 "nombre": ingrediente.nombre_ingrediente,
+                "tipo_medida": ingrediente.tipo_medida,
                 "cantidad": ingrediente.cantidad
             } for ingrediente in ingredientes
         ]
@@ -184,7 +186,7 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
                         print(f"Unidades de medida incompatibles para el alimento {alimento['name_alimento']}")
                         continue
             except Alimento.DoesNotExist:
-                print(f"Alimento {alimento['id_alimento']} no encontrado.")
+                print(f"Alimento {alimento['name_alimento']} no encontrado, es posible que lo hayas utilizado todo en otro alimento,deberas regenerar la minuta.")
                 continue
             nueva_cantidad = alimento_obj.load_alimento - Decimal(alimento["load_alimento"])
             
@@ -195,8 +197,11 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
                 # Si la cantidad es mayor a 0, restar cantidad y crear un nuevo alimento
                 alimento_obj.load_alimento = nueva_cantidad
                 alimento_obj.save()
+        return {"status": "success", "message": "Minuta cumplida, se generó descuento de alimentos."}    
 
-    return {"status": "success", "message": "Minuta validada correctamente."}
+    else:
+        return {"status": "success", "message": "No se realizó la minuta, no se genera descuento de alimentos."}   
+    
 
 #funcion para actualizar estado_dias en la tabla InfoMinuta
 def update_estado_dias(user_id, date, realizacion_minuta):
@@ -262,3 +267,79 @@ def update_estado_dias(user_id, date, realizacion_minuta):
         print(f"Error al actualizar el estado de los días: {e}")
 
     return None
+
+# Función para editar la cantidad de un ingrediente en la minuta
+def editar_cantidad_ingrediente_minuta(user, date, id_ingrediente, cantidad):
+    """
+    Edita la cantidad de un ingrediente en la minuta del día.
+
+    Args:
+        user (Users): El usuario cuya minuta activa se va a editar.
+        date (datetime.date): La fecha para la cual se va a editar la comida.
+        id_ingrediente (int): ID del ingrediente a editar.
+        cantidad (str): Nueva cantidad del ingrediente.
+
+    Returns:
+        dict: Diccionario con detalles de la edición y el estado de la validación.
+    """
+
+    # Validar si hay una minuta activa
+    try:
+        state_minuta_user = ListaMinuta.objects.get(user=user, state_minuta=True)
+    except ListaMinuta.DoesNotExist:
+        print("No hay minuta activa para el usuario.")
+        return {"status": "error", "message": "No hay minuta activa para el usuario."}
+
+    # Obtener el ID de la minuta activa
+    minuta_activa_id = state_minuta_user.id_lista_minuta
+    print(f"ID de la minuta activa: {minuta_activa_id}")
+
+    # Obtener la minuta del día
+    try:
+        minuta_dia = Minuta.objects.get(lista_minuta=minuta_activa_id, fecha=date)
+    except Minuta.DoesNotExist:
+        print(f"No hay minuta registrada para la fecha {date} en la minuta activa.")
+        return {"status": "error", "message": f"No hay minuta registrada para la fecha {date} en la minuta activa."}
+
+    # Obtener el ingrediente a editar
+    try:
+        ingrediente = MinutaIngrediente.objects.get(id_minuta=minuta_dia, id_minuta_ingrediente=id_ingrediente)
+    except MinutaIngrediente.DoesNotExist:
+        print(f"No se encontró el ingrediente con ID {id_ingrediente} en la minuta del día.")
+        return {"status": "error", "message": f"No se encontró el ingrediente con ID {id_ingrediente} en la minuta del día."}
+    
+    # La cantidad debe ser menor o igual a la cantidad que se tiene en la despensa
+    try:
+        alimentos = Alimento.objects.filter(name_alimento=ingrediente.nombre_ingrediente, dispensaalimento__dispensa__users=user)
+        if alimentos.exists():
+            total_cantidad_despensa = sum(Decimal(alimento.load_alimento) for alimento in alimentos)
+            if total_cantidad_despensa < Decimal(cantidad):
+                print(f"No hay suficiente cantidad de {ingrediente.nombre_ingrediente} en la despensa.")
+                return {"status": "error", "message": f"No hay suficiente cantidad de {ingrediente.nombre_ingrediente} en la despensa."}
+            
+            if total_cantidad_despensa == Decimal(cantidad):
+                # Si la cantidad es igual a la cantidad en la despensa, eliminar el alimento
+                for alimento in alimentos:
+                    alimento.delete()
+                ingrediente.cantidad = cantidad
+                ingrediente.save()
+                return {"status": "success", "message": "recuerda que se eliminó el alimento de la despensa, puede que tengas que regenerar la minuta."}
+        else:
+            print(f"No se encontró el alimento {ingrediente.nombre_ingrediente} en la base de datos.")
+            return {"status": "error", "message": f"No se encontró el alimento {ingrediente.nombre_ingrediente} en la base de datos."}
+    except Exception as e:
+        print(f"Error al verificar la cantidad del alimento en la despensa: {e}")
+        return {"status": "error", "message": f"Error al verificar la cantidad del alimento en la despensa: {e}"}
+    
+    # Editar la cantidad del ingrediente
+    try:
+        ingrediente.cantidad = cantidad
+        ingrediente.save()
+    except Exception as e:
+        print(f"Error al editar la cantidad del ingrediente: {e}")
+        return {"status": "error", "message": f"Error al editar la cantidad del ingrediente: {e}"}
+
+    return {"status": "success", "message": "Cantidad del ingrediente editada correctamente."}
+
+
+
