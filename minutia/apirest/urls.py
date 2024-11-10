@@ -28,5 +28,8 @@ urlpatterns = [
     re_path('contol_minuta/', views.control_uso_productos),
     re_path('sugerencia_de_uso/', views.sugerencia_productos_despensa),
     re_path('recomendacion_compra/', views.recomendacion_compra),
-    re_path('crearobjetivo/', views.crear_objetivo),
+    re_path('crear_objetivo/', views.crear_objetivo),
+    re_path('consultar_objetivo/', views.consultar_objetivo),
+    re_path('eliminar_objetivo/', views.eliminar_objetivo),
+    re_path("consultar_progreso_objetivo/", views.consultar_progreso_objetivo),
 ]

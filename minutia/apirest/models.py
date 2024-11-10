@@ -132,6 +132,7 @@ class Objetivo(models.Model):
     id_tipo_objetivo = models.ForeignKey('TipoObjetivo', on_delete=models.CASCADE)
     meta_total = models.PositiveIntegerField()  # La cantidad total para cumplir el objetivo (ej. 10 minutas completas)
     completado = models.BooleanField(default=False)  
+    state_objetivo = models.CharField(max_length=50)  # Estado del objetivo
     fecha_creacion = models.DateField(auto_now_add=True)
      
     def __str__(self):

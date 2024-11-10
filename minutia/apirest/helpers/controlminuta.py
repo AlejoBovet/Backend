@@ -109,8 +109,10 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
     minuta_activa_id = state_minuta_user.id_lista_minuta
     print(f"ID de la minuta activa: {minuta_activa_id}")
 
+    # Recuperar cantidad de personas de la minuta activa
+    cantidad_personas = InfoMinuta.objects.get(lista_minuta=minuta_activa_id).cantidad_personas
     
-    # Obtener la minuta del día
+    # Obtener las minutas del día
     minutas_del_dia = Minuta.objects.filter(lista_minuta=minuta_activa_id, fecha=date).all()
 
     if not minutas_del_dia:
@@ -136,20 +138,30 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
             "ingredientes": ingredientes_list
         })
     
-    # obtener id de productos utilizados en la minuta
-    alimentos_usados = InfoMinuta.objects.get(lista_minuta=minuta_activa_id).alimentos_usados_ids
+    # Obtener id de productos utilizados en la minuta
+    try:
+        alimentos_usados = InfoMinuta.objects.get(lista_minuta=minuta_activa_id).alimentos_usados_ids
+    except InfoMinuta.DoesNotExist:
+        print("No se encontró información de la minuta.")
+        return {"status": "error", "message": "No se encontró información de la minuta."}
+
     print(f"Alimentos usados en la minuta: {alimentos_usados}")
+
     # Obtener los detalles de los alimentos usados
     alimentos_usados_list = []
     for alimento_id in alimentos_usados:
-        alimento = Alimento.objects.get(id_alimento=alimento_id)
-        alimentos_usados_list.append({
-            "id_alimento": alimento.id_alimento,
-            "name_alimento": alimento.name_alimento,
-            "unit_measurement": alimento.unit_measurement,
-            "load_alimento": alimento.load_alimento,
-        })
-    
+        try:
+            alimento = Alimento.objects.get(id_alimento=alimento_id)
+            alimentos_usados_list.append({
+                "id_alimento": alimento.id_alimento,
+                "name_alimento": alimento.name_alimento,
+                "unit_measurement": alimento.unit_measurement,
+                "load_alimento": alimento.load_alimento,
+            })
+        except Alimento.DoesNotExist:
+            print(f"Alimento con ID {alimento_id} no encontrado.")
+            continue
+
     if str(realizacion_minuta).strip().lower() == "true":
         # Iniciar proceso de IA para analizar qué productos reponer en la despensa
         analisis_reposicion = analizar_repocision_productos(minutas_list, alimentos_usados_list)
@@ -157,7 +169,20 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
 
         for alimento in analisis_reposicion:
             try:
-                alimento_obj = Alimento.objects.get(id_alimento=alimento["id_alimento"])
+                alimento_obj = Alimento.objects.get(id_alimento=int(alimento["id_alimento"]))
+                # Convertir las unidades de medida si es necesario
+                if alimento_obj.unit_measurement != alimento["unit_measurement"]:
+                    if alimento_obj.unit_measurement == "kg" and alimento["unit_measurement"] == "gr":
+                        alimento["load_alimento"] = Decimal(alimento["load_alimento"]) / 1000
+                    elif alimento_obj.unit_measurement == "gr" and alimento["unit_measurement"] == "kg":
+                        alimento["load_alimento"] = Decimal(alimento["load_alimento"]) * 1000
+                    elif alimento_obj.unit_measurement == "lt" and alimento["unit_measurement"] == "ml":
+                        alimento["load_alimento"] = Decimal(alimento["load_alimento"]) / 1000
+                    elif alimento_obj.unit_measurement == "ml" and alimento["unit_measurement"] == "lt":
+                        alimento["load_alimento"] = Decimal(alimento["load_alimento"]) * 1000
+                    else:
+                        print(f"Unidades de medida incompatibles para el alimento {alimento['name_alimento']}")
+                        continue
             except Alimento.DoesNotExist:
                 print(f"Alimento {alimento['id_alimento']} no encontrado.")
                 continue
@@ -171,12 +196,7 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
                 alimento_obj.load_alimento = nueva_cantidad
                 alimento_obj.save()
 
-        print("La comida ha sido repuesta en la despensa.")
-        return {"status": "success", "message": "Minuta completada correctamente, se han desconatdos los productos utlilizados.", "analisis_reposicion": analisis_reposicion}
-
-    # Retornar si la realizacion_minuta es diferente de false , se debe indicar bien hecho compliste la minuta
-    return {"status": "success", "message": "No se han descontado productos."}
-
+    return {"status": "success", "message": "Minuta validada correctamente."}
 
 #funcion para actualizar estado_dias en la tabla InfoMinuta
 def update_estado_dias(user_id, date, realizacion_minuta):

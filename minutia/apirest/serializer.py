@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Users, Dispensa, Alimento,DispensaAlimento, Objetivo
+from .models import Users, Dispensa, Alimento,DispensaAlimento, Objetivo, ProgresoObjetivo
 
 
 # Users Serializer
@@ -36,4 +36,9 @@ class DispensaSerializer(serializers.ModelSerializer):
 class ObjetivoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Objetivo
+        fields = '__all__'
+
+class ProgresoObjetivoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProgresoObjetivo
         fields = '__all__'

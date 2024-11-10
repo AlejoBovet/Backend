@@ -36,12 +36,14 @@ def extractdataticket(extracted_text):
     el formato de la boleta es el siguiente:
     codigo de producto, nombre del producto, cantidad y al lado pero en otra columna el precio unitario. 
     Extrae los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad en formato JSON de la siguiente manera:
+    formato de salida:
     [
         {{ "producto": "nombre del producto", "unidad": "kg o gr o lt o ml", "cantidad": "cantidad" }}
     ]
-    Envía solo el JSON con los alimentos sin texto adicional.
-    En caso de que no puedas determinar la unidad de medida, y el producto es sólido, asigna "unidad": "kg"; 
-    si es líquido, asigna "unidad": "lt". Evita usar "unidad" como valor de unidad.
+    Instrucciones:
+    -Envía solo el JSON con los alimentos sin texto adicional.
+    -En caso de que no puedas determinar la unidad de medida, y el producto es sólido, asigna "unidad": "kg"; 
+    -si es líquido, asigna "unidad": "lt". Evita usar "unidad" como valor de unidad.
     """
 
     prompt = PromptTemplate(
@@ -83,8 +85,9 @@ def analyzeusoproductos(alimentos_list):
     [
         {{ "producto": "nombre del producto", "unidad": "kg o gr o lt o ml", "cantidad": "cantidad", "uso_alimento": "desayuno, almuerzo, cena" }}
     ]
-
-    No modifiques el nombre del producto, la unidad ni la cantidad. Devuelve solo el JSON actualizado con la clave "uso_alimento" correctamente asignada.
+    Instrucciones
+    -No modifiques el nombre del producto, la unidad ni la cantidad. 
+    -Devuelve solo el JSON actualizado con la clave "uso_alimento" correctamente asignada.
     """
     
     prompt = PromptTemplate(
@@ -122,7 +125,7 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
     No uses galletas o crema de cacahuate como comidas principales.
     Aprovecha al máximo todos los ingredientes disponibles en la despensa para crear platos variados y balanceados.
     Responde únicamente en formato JSON. No hagas preguntas ni incluyas información adicional. Proporciona la respuesta en el siguiente formato JSON:
-    
+    Foemato de salida:
     {{ "name_food": "nombre del plato",
         "type_food": "{type_food}",
         "fecha": "YYYY-MM-DD",
@@ -133,7 +136,7 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
         ],
         }}
     
-    Aquí tienes un ejemplo de cómo esta estructurada la despensa:
+    Aquí tienes un ejemplo de cómo esta estructurada la despensa (alimento_list):
     [
         {{ "producto": "arroz", "unidad": "kg", "cantidad": "2" , "uso_alimento": "almuerzo, cena" }},
         {{ "producto": "pollo", "unidad": "kg", "cantidad": "1" , "uso_alimento": "almuerzo, cena" }},
@@ -162,6 +165,7 @@ def getreceta (name_minuta,people_number):
     template ="""
     Proporciona la receta {name_minuta} para la cantidad de {people_number} personas. La receta debe ser devuelta en formato JSON, siguiendo esta estructura:
 
+    Formato de salida:
     {{
       "ingredientes": [
         {{ "nombre": "ingrediente1", "cantidad": "cantidad1" }},

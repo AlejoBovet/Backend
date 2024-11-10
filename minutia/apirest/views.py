@@ -5,7 +5,7 @@ from rest_framework.schemas import AutoSchema
 from django.utils import timezone
 from google.cloud import vision
 from .models import ProgresoObjetivo, TipoObjetivo, Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente,Sugerencias,HistorialAlimentos,Objetivo
-from .serializer import ObjetivoSerializer, UsersSerializer,DispensaSerializer
+from .serializer import ObjetivoSerializer, UsersSerializer, DispensaSerializer, ProgresoObjetivoSerializer
 from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta, notificacion_sugerencia
 from .helpers.controlminuta import minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter,obtener_y_validar_minuta_del_dia, update_estado_dias
 from .helpers.procesoia import crear_recomendacion_compra, extractdataticket, analyzeusoproductos, makeminuta, getreceta
@@ -1364,7 +1364,7 @@ def recomendacion_compra(request):
 
     return Response({'recommendation': recomendation_ia}, status=200)
 
-# crear objetivos 
+## CREAR OBJETIVOS 
 @api_view(['POST'])
 @schema(AutoSchema(
     manual_fields=[
@@ -1414,12 +1414,19 @@ def crear_objetivo(request):
     except TipoObjetivo.DoesNotExist:
         return Response({'error': 'Tipo Objetivo not found.'}, status=404)
     
+    try:
+        objetivo = Objetivo.objects.get(user=user, state_objetivo=True)
+        return Response({'error': 'User already has an active objective.'}, status=400)
+    except Objetivo.DoesNotExist:
+        pass
+    
     
     try:
         objetivo = Objetivo.objects.create(
             user=user,
             id_tipo_objetivo=tipo_objetivo,
-            meta_total=meta_objetivo
+            meta_total=meta_objetivo,
+            state_objetivo=True
         )
          # Crear el progreso inicial en 0 para el nuevo objetivo
         ProgresoObjetivo.objects.create(
@@ -1433,3 +1440,115 @@ def crear_objetivo(request):
         return Response({'message': 'Objetivo created successfully.', 'objetivo': objetivo_data}, status=201)
     except Exception as e:
         return Response({'error': str(e)}, status=500)
+    
+## CONSULTAR OBJETIVOS
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+    ]
+))
+def consultar_objetivo(request):
+    """
+    Endpoint for getting the objetive of a user.
+    """
+    user_id = request.query_params.get('user_id')
+
+    if not user_id:
+        return Response({'error': 'User ID is required.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    
+    try:
+        objetivo = Objetivo.objects.get(user=user, state=True)
+    except Objetivo.DoesNotExist:
+        return Response({'error': 'No active objective found for the user.'}, status=404)
+    
+    objetivo_data = ObjetivoSerializer(objetivo).data
+
+    return Response({'objetivo': objetivo_data}, status=200)
+
+## ELIMINAR OBJETIVOS
+@api_view(['PUT'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+    ]
+))
+def eliminar_objetivo(request):
+    """
+    Endpoint for deactivating a objetive of a user.
+    """
+    user_id = request.data.get('user_id')
+
+    if not user_id:
+        return Response({'error': 'User ID is required.'}, status=400)
+    
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    
+    try:
+        objetivo = Objetivo.objects.get(user=user, state=True)
+    except Objetivo.DoesNotExist:
+        return Response({'error': 'No active objective found for the user.'}, status=404)
+    
+    # Cambiar estado del objetivo a inactivo
+    objetivo.state = False
+    objetivo.save()
+
+    # Verificar si el estado se ha actualizado correctamente
+    if not objetivo.state:
+        return Response({'message': 'Objetivo is deactivated.'}, status=200)
+    else:
+        return Response({'error': 'Failed to deactivate Objetivo.'}, status=500)
+    
+## CONSULTAR PROGRESO DE OBJETIVOS
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+    ]
+))
+def consultar_progreso_objetivo(request):
+    """
+    Endpoint for getting the progress of the objetive of a user.
+    """
+    user_id = request.query_params.get('user_id')
+
+    if not user_id:
+        return Response({'error': 'User ID is required.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    
+    try:
+        objetivo = Objetivo.objects.get(user=user, state=True)
+    except Objetivo.DoesNotExist:
+        return Response({'error': 'No active objective found for the user.'}, status=404)
+    
+    progreso = ProgresoObjetivo.objects.get(objetivo=objetivo)
+    progreso_data = ProgresoObjetivoSerializer(progreso).data
+
+    return Response({'progreso': progreso_data}, status=200)
