@@ -23,14 +23,14 @@ def analizar_despensa(user_id):
         minuta_activa = ListaMinuta.objects.filter(user=user, state_minuta=True).exists()
 
         if not minuta_activa:
-            print("No hay minuta activa para el usuario.")
-            return "No hay minuta activa para el usuario."
+            #print("No hay minuta activa para el usuario.")
+            return False
         
         # Verificar si quedan alimentos en la despensa
         alimentos_dispensa = DispensaAlimento.objects.filter(dispensa=user.dispensa).count()
 
         if alimentos_dispensa == 0:
-            print("No hay alimentos en la despensa.")
+            #print("No hay alimentos en la despensa.")
             return "No hay alimentos en la despensa."
 
         # Recuperar alimentos de la despensa

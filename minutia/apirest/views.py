@@ -1312,7 +1312,7 @@ def edit_ingrediente_minuta(request):
         ),
     ]
 ))
-def obtener_notificacion(request):
+def obtener_notificacion_minuta(request):
     """
     Endpoint for getting the notifications of a user, alert the user when exist minuta or not for example
     1. if exist minuta active generated notification for recorder a user realized minuta.
@@ -1328,7 +1328,7 @@ def obtener_notificacion(request):
         ]}, status=200)
     else:
         return Response({"notifications": [
-            { "notification": "No tienes nuevas notificaciones" }
+            { "notification": False }
         ]}, status=200)
 
     
@@ -1349,21 +1349,21 @@ def obtener_notificacion(request):
         ),
     ]
 ))
-def obtener_notificacion_dispensa(request):
+def obtener_notificacion_despensa(request):
     """
     Endpoint for getting the notifications of a user, alert a user in base state despensa for example:
-    1.if despensa is not have product generte notification for join products.
-    2.if despensa is have product generte notification for use products.
+    1.if despensa is not have product and minuta active generte notification for join products for not have prductos for complete minuta.
+    2.if despensa is have product generte and have not minuta active notification for generated plan de minutas.
+    3.if despensa is not have product and not minuta active generte notification for join products for generated plan de minutas.
+    4. if not have check that before condition generte a false notification.
     """
     user_id = request.query_params.get('user_id')
     dispensa_id = request.query_params.get('dispensa_id')
     mensaje = verificar_dispensa(user_id,dispensa_id)
-    if mensaje:
-        return Response ({"notifications": [
+    
+    return Response ({"notifications": [
             { "notification": mensaje }
         ]}, status=200)
-    else:
-        return Response("False", status=200)
 
 @api_view(['GET'])
 @schema(AutoSchema(
@@ -1402,10 +1402,13 @@ def uso_productos_para_minuta(request):
         ),
     ]
 ))
-def uso_productos_para_dispensa(request):
+def uso_productos_para_despensa(request):
     """
     Endpoint for getting the notifications of a user, this alert exist for 
     generate "notifications" for the user when exist suggestion of use products.
+    would response  ¡Tienes sugerencias de uso para los alimentos en tu despensa! if have productos that not use in minuta.
+    elif "No hay minuta activa para el usuario, crear una minuta." 
+    else "No hay alimentos en la despensa para entregarte una sugerencia." 
     """
     user_id = request.query_params.get('user_id')
     mensaje = notificacion_sugerencia(user_id)
@@ -1442,6 +1445,7 @@ def uso_productos_para_dispensa(request):
 def sugerencia_productos_despensa(request):
     """
     Endpoint for getting the data suggestions of use products that not use in minuta and stay in despensa.
+    Have to uses after generate notification for user with notificacion_sugerencia that may be have suggestions.
     """
     user_id = request.query_params.get('user_id')
     date_str = request.query_params.get('date')
