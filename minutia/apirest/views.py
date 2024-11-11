@@ -984,6 +984,7 @@ def minuta_detail(request):
                 {   
                     'id_ingrediente': ingrediente.id_minuta_ingrediente,
                     'nombre': ingrediente.nombre_ingrediente,
+                    'tipo_medida': ingrediente.tipo_medida,
                     'cantidad': ingrediente.cantidad
                 } for ingrediente in minuta.ingredientes.all()
             ]
@@ -1004,7 +1005,7 @@ def minuta_detail(request):
         'info_minuta': {
             'tipo_dieta': info_minuta.tipo_dieta,
             'cantidad_personas': info_minuta.cantidad_personas,
-            'alimentos_usados_ids': info_minuta.alimentos_usados_ids,
+            'estado_minutas': info_minuta.estado_dias,
 
         },
         'minutas': minutas_data
