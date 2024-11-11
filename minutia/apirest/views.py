@@ -377,9 +377,21 @@ def delete_alimento(request):
     #validar si el alimento esta en una minuta activa en caso de que este y se quiera eliminar se desactiva la minuta
     
     try:
-        lista_minuta = ListaMinuta.objects.get(user=user, state_minuta=True)
-        lista_minuta.state_minuta = False
-        lista_minuta.save()
+        # Verificar si hay alimentos en la minuta
+        alimentos_dispensa = DispensaAlimento.objects.filter(dispensa=dispensa).values_list('alimento_id', flat=True)
+        # Verificar si el alimento a eliminar está en la minuta
+        if alimento_id in alimentos_dispensa:
+            lista_minuta = ListaMinuta.objects.get(user=user, state_minuta=True)
+            info_minuta = InfoMinuta.objects.get(lista_minuta=lista_minuta.id_lista_minuta)
+            alimentos_en_minuta = info_minuta.alimentos_usados_ids
+            if alimento_id in alimentos_en_minuta:
+                alimentos_en_minuta.remove(alimento_id)
+                info_minuta.alimentos_usados_ids = alimentos_en_minuta
+                info_minuta.save()
+                alimentos_no_minuta = [alimento for alimento in alimentos_dispensa if alimento not in alimentos_en_minuta]
+                if not alimentos_no_minuta:
+                    lista_minuta.state_minuta = False
+                    lista_minuta.save()
     except ListaMinuta.DoesNotExist:
         pass
 
@@ -443,6 +455,20 @@ def delete_all_alimentos(request):
         return Response({'error': 'Dispensa not found for the user.'}, status=404)
     except AttributeError:
         return Response({'error': 'User does not have a dispensa.'}, status=404)
+    
+    # si existe minuta activa y hay alimentos que estan en la minuta se desactiva la minuta
+    try:
+        # veificar si hay alimentos en la minuta
+        alimentos_dispensa = DispensaAlimento.objects.filter(dispensa=dispensa).values_list('alimento_id', flat=True)
+        lista_minuta = ListaMinuta.objects.get(user=user, state_minuta=True)
+        info_minuta = InfoMinuta.objects.get(lista_minuta=lista_minuta.id_lista_minuta)
+        alimentos_en_minuta = info_minuta.alimentos_usados_ids
+        alimentos_no_minuta = [alimento for alimento in alimentos_dispensa if alimento not in alimentos_en_minuta]
+        if alimentos_no_minuta:
+            lista_minuta.state_minuta = False
+            lista_minuta.save()
+    except ListaMinuta.DoesNotExist:
+        pass
 
     # Eliminar todos los alimentos de la dispensa
     DispensaAlimento.objects.filter(dispensa=dispensa).delete()
