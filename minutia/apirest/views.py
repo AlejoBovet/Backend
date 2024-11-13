@@ -1487,7 +1487,7 @@ def sugerencia_productos_despensa(request):
         return Response({'error': 'User not found.'}, status=404)
     
     # obtener sugerencia 
-    suggestion_user = Sugerencias.objects.filter(user=user, date=date)
+    suggestion_user = Sugerencias.objects.filter(user=user, fecha=date)
     if suggestion_user:
         suggestion = suggestion_user.first().suggestion
     else:
