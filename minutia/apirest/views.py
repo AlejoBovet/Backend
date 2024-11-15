@@ -1491,7 +1491,7 @@ def sugerencia_productos_despensa(request):
     # obtener sugerencia 
     suggestion_user = Sugerencias.objects.filter(user=user, fecha=date)
     if suggestion_user:
-        suggestion = suggestion_user.first().suggestion
+        suggestion = suggestion_user.first().recomendacion
     else:
         suggestion = "No hay sugerencias para el usuario en la fecha indicada."
 
