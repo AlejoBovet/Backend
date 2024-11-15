@@ -827,21 +827,23 @@ def create_meinuta(request):
     # asignar la fecha de inicio
     starting_date =  date_start
     
-    # Crear la minuta
-    minutas = makeminuta(alimentos_list,people_number,dietary_preference,type_food,starting_date)
-    #print(minutas)
-    # Validar que la respuesta tenga minutas
-    print(minutas)
-    if not minutas:
-        return Response({'error': 'No minutas found in the response.'}, status=400)
+    max_attempts = 5
+    attempts = 0
 
-    # Extraer la última fecha de la minuta y convertirla a un objeto datetime
-    fecha_termino_str = minutas[-1]['fecha']
-    try:
-        fecha_termino = parser.parse(fecha_termino_str)
-        fecha_termino = fecha_termino.replace(tzinfo=pytz.UTC)  # Asegurarse de que esté en UTC
-    except (ValueError, parser.ParserError) as e:
-        return Response({'error': f'Invalid date format in minutas: {str(e)}'}, status=400)
+    while attempts < max_attempts:
+        try:
+            # Crear la minuta
+            minutas = makeminuta(alimentos_list, people_number, dietary_preference, type_food, starting_date)
+            # Extraer la última fecha de la minuta y convertirla a un objeto datetime
+            fecha_termino_str = minutas[-1]['fecha']
+            fecha_termino = datetime.strptime(fecha_termino_str, '%Y-%m-%d')
+            fecha_termino = fecha_termino.replace(tzinfo=pytz.UTC)  # Asegurarse de que esté en UTC
+            break  # Salir del bucle si no hay errores
+        except Exception as e:
+            print(f"Error creating minuta or parsing fecha_termino_str: {e}")
+            attempts += 1
+            if attempts >= max_attempts:
+                return Response({'error': 'Failed to create minuta or parse fecha_termino_str after multiple attempts.'}, status=500)
 
     # Crear la lista de minuta y asociarla a los alimentos
     lista_minuta = ListaMinuta.objects.create(
@@ -1659,7 +1661,7 @@ def consultar_objetivo(request):
         return Response({'error': 'User not found.'}, status=404)
     
     try:
-        objetivo = Objetivo.objects.get(user=user, state=True)
+        objetivo = Objetivo.objects.get(user=user, state_objetivo=True)
     except Objetivo.DoesNotExist:
         return Response({'error': 'No active objective found for the user.'}, status=404)
     
@@ -1694,16 +1696,16 @@ def eliminar_objetivo(request):
         return Response({'error': 'User not found.'}, status=404)
     
     try:
-        objetivo = Objetivo.objects.get(user=user, state=True)
+        objetivo = Objetivo.objects.get(user=user, state_objetivo=True)
     except Objetivo.DoesNotExist:
         return Response({'error': 'No active objective found for the user.'}, status=404)
     
     # Cambiar estado del objetivo a inactivo
-    objetivo.state = False
+    objetivo.state_objetivo = False
     objetivo.save()
 
     # Verificar si el estado se ha actualizado correctamente
-    if not objetivo.state:
+    if not objetivo.state_objetivo:
         return Response({'message': 'Objetivo is deactivated.'}, status=200)
     else:
         return Response({'error': 'Failed to deactivate Objetivo.'}, status=500)
@@ -1735,7 +1737,7 @@ def consultar_progreso_objetivo(request):
         return Response({'error': 'User not found.'}, status=404)
     
     try:
-        objetivo = Objetivo.objects.get(user=user, state=True)
+        objetivo = Objetivo.objects.get(user=user, state_objetivo=True)
     except Objetivo.DoesNotExist:
         return Response({'error': 'No active objective found for the user.'}, status=404)
     

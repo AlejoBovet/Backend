@@ -160,4 +160,4 @@ class ProgresoObjetivo(models.Model):
     progreso_acumulado = models.PositiveIntegerField()   
 
     def __str__(self):
-        return f"{self.objetivo.tipo_objetivo} - {self.fecha}"
+        return f"{self.objetivo.id_tipo_objetivo.tipo_objetivo} - {self.fecha}"

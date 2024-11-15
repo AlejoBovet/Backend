@@ -287,25 +287,25 @@ def editar_cantidad_ingrediente_minuta(user, date, id_ingrediente, cantidad):
     try:
         state_minuta_user = ListaMinuta.objects.get(user=user, state_minuta=True)
     except ListaMinuta.DoesNotExist:
-        print("No hay minuta activa para el usuario.")
+        #print("No hay minuta activa para el usuario.")
         return {"status": "error", "message": "No hay minuta activa para el usuario."}
 
     # Obtener el ID de la minuta activa
     minuta_activa_id = state_minuta_user.id_lista_minuta
-    print(f"ID de la minuta activa: {minuta_activa_id}")
+    #print(f"ID de la minuta activa: {minuta_activa_id}")
 
     # Obtener la minuta del día
     try:
         minuta_dia = Minuta.objects.get(lista_minuta=minuta_activa_id, fecha=date)
     except Minuta.DoesNotExist:
-        print(f"No hay minuta registrada para la fecha {date} en la minuta activa.")
+        #print(f"No hay minuta registrada para la fecha {date} en la minuta activa.")
         return {"status": "error", "message": f"No hay minuta registrada para la fecha {date} en la minuta activa."}
 
     # Obtener el ingrediente a editar
     try:
         ingrediente = MinutaIngrediente.objects.get(id_minuta=minuta_dia, id_minuta_ingrediente=id_ingrediente)
     except MinutaIngrediente.DoesNotExist:
-        print(f"No se encontró el ingrediente con ID {id_ingrediente} en la minuta del día.")
+        #print(f"No se encontró el ingrediente con ID {id_ingrediente} en la minuta del día.")
         return {"status": "error", "message": f"No se encontró el ingrediente con ID {id_ingrediente} en la minuta del día."}
     
     # La cantidad debe ser menor o igual a la cantidad que se tiene en la despensa
@@ -314,7 +314,7 @@ def editar_cantidad_ingrediente_minuta(user, date, id_ingrediente, cantidad):
         if alimentos.exists():
             total_cantidad_despensa = sum(Decimal(alimento.load_alimento) for alimento in alimentos)
             if total_cantidad_despensa < Decimal(cantidad):
-                print(f"No hay suficiente cantidad de {ingrediente.nombre_ingrediente} en la despensa.")
+                #print(f"No hay suficiente cantidad de {ingrediente.nombre_ingrediente} en la despensa.")
                 return {"status": "error", "message": f"No hay suficiente cantidad de {ingrediente.nombre_ingrediente} en la despensa."}
             
             if total_cantidad_despensa == Decimal(cantidad):
@@ -325,10 +325,10 @@ def editar_cantidad_ingrediente_minuta(user, date, id_ingrediente, cantidad):
                 ingrediente.save()
                 return {"status": "success", "message": "recuerda que se eliminó el alimento de la despensa, puede que tengas que regenerar la minuta."}
         else:
-            print(f"No se encontró el alimento {ingrediente.nombre_ingrediente} en la base de datos.")
+            #print(f"No se encontró el alimento {ingrediente.nombre_ingrediente} en la base de datos.")
             return {"status": "error", "message": f"No se encontró el alimento {ingrediente.nombre_ingrediente} en la base de datos."}
     except Exception as e:
-        print(f"Error al verificar la cantidad del alimento en la despensa: {e}")
+        #print(f"Error al verificar la cantidad del alimento en la despensa: {e}")
         return {"status": "error", "message": f"Error al verificar la cantidad del alimento en la despensa: {e}"}
     
     # Editar la cantidad del ingrediente
@@ -336,7 +336,7 @@ def editar_cantidad_ingrediente_minuta(user, date, id_ingrediente, cantidad):
         ingrediente.cantidad = cantidad
         ingrediente.save()
     except Exception as e:
-        print(f"Error al editar la cantidad del ingrediente: {e}")
+        #print(f"Error al editar la cantidad del ingrediente: {e}")
         return {"status": "error", "message": f"Error al editar la cantidad del ingrediente: {e}"}
 
     return {"status": "success", "message": "Cantidad del ingrediente editada correctamente."}
