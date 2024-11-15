@@ -8,7 +8,7 @@ from .models import ProgresoObjetivo, TipoObjetivo, Users,Dispensa,Alimento,Disp
 from .serializer import ObjetivoSerializer, UsersSerializer, DispensaSerializer, ProgresoObjetivoSerializer
 from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta, notificacion_sugerencia
 from .helpers.controlminuta import editar_cantidad_ingrediente_minuta, minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter,obtener_y_validar_minuta_del_dia, update_estado_dias
-from .helpers.procesoia import crear_recomendacion_compra, extractdataticket, analyzeusoproductos, makeminuta, getreceta
+from .helpers.procesoia import crear_recomendacion_compra, extractdataticket, analyzeusoproductos, makeminuta, getreceta, pre_analicis_minuta
 from .helpers.Metricas import calcular_uso_frecuente_por_comida, data_minima_recomendacion_compra,obtener_dieta_mas_usada,typo_food_mas_utlizado
 from .helpers.ControlObjetivos import control_objetivo_minuta
 from langchain import OpenAI
@@ -810,6 +810,12 @@ def create_meinuta(request):
     
     if not alimentos_list:
         return Response({'error': 'No alimentos found in the dispensa.'}, status=400)
+    
+    #Pre analisis de la dispensa
+    # Validar la minuta
+    valido = pre_analicis_minuta(alimentos_list, dietary_preference)
+    if valido.get('status') == "no viable":
+        return Response({'error': 'Con los productos actuales no es viable generar el tipo de dieta solicitado'}, status=400)
    
     # Filtrar los alimentos según el tipo de comida
     alimentos_list = listproduct_minutafilter(alimentos_list, type_food)

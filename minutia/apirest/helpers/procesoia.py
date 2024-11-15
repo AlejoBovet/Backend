@@ -118,9 +118,42 @@ def analyzeusoproductos(alimentos_list):
 
     return usos
 
+# Analicis de vialidad de la minuta
+def pre_analicis_minuta(alimentos_list,dietary_preference):
+    template = """
+    Tengo la siguiente lista de alimentos en formato JSON: {alimentos_list}.
+    Necesito analizar la viabilidad de crear una minuta con estos alimentos para una dieta {dietary_preference}.
+    
+    En caso que sea posible devuelve un mensaje de confirmación, en caso contrario, devuelve un mensaje de error.
+
+    Formato de salida:
+    {{"status":"viable"}} o {{"status":"no viable"}}
+
+    instrucciones:
+    -No modifiques el nombre del producto, la unidad ni la cantidad.
+    -Devuelve solo el mensaje de confirmación o error.
+    -No hagas preguntas ni incluyas información adicional.
+    -No incluyas información adicional.
+    -No hagas preguntas.
+    -**Solo entrega el formato de salida solicitado.**
+    """
+
+    prompt = PromptTemplate(input_variables=["alimentos_list","dietary_preference"], template=template)
+    formatted_prompt = prompt.format(alimentos_list=alimentos_list, dietary_preference=dietary_preference)
+
+    llm_response = llm.invoke(formatted_prompt)
+    json_content = llm_response.content.strip()
+    print("Contenido de json_content (repr):", repr(json_content))
+
+    status=process_response(json_content)
+
+    return status
+
+    
+
 
 def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starting_date):
-    print("alimentos_list:", alimentos_list)
+    llm = ChatOpenAI(model_name="gpt-4-turbo", api_key=openai_key)
     template = """
     Tengo la siguiente despensa: {alimentos_list} y necesito crear una minuta  Solo puedes utilizar estos ingredientes.
     Necesito una minuta exclusivamente para {type_food} para {people_number} personas, con preferencia {dietary_preference}, comenzando desde {starting_date}.
@@ -133,7 +166,7 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
     Responde únicamente en formato JSON. No hagas preguntas ni incluyas información adicional. Proporciona la respuesta en el siguiente formato JSON:
     Foemato de salida:
     {{ "name_food": "nombre del plato",
-        "type_food": "{type_food}",
+        "type_food": "type_food",
         "fecha": "YYYY-MM-DD",
          "ingredientes": [
             {{ "nombre": "ingrediente1", "tipo_medida": "medida1" ,"cantidad": "cantidad1" }},
@@ -149,6 +182,8 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
     ]
 
     IMPORTANTE: ASEGURATE DE UTILIZAR TODA LA CANITDAD DE ALIMENTOS DISPONIBLES EN LA DESPENSA
+    Instrucciones:
+    -
 
      """
 
@@ -159,10 +194,10 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
     
     llm_response = llm.invoke(formatted_prompt)
     json_content = llm_response.content.strip()
-    print("Contenido de json_content (repr):", repr(json_content))
+    #print("Contenido de json_content (repr):", repr(json_content))
     
     minutas=process_response(json_content)
-
+    
     return minutas
 
 def getreceta (name_minuta,people_number):
