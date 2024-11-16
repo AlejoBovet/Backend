@@ -156,11 +156,11 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
     llm = ChatOpenAI(model_name="gpt-4-turbo", api_key=openai_key)
     template = """
     Tengo la siguiente despensa: {alimentos_list} y necesito crear una minuta  Solo puedes utilizar estos ingredientes.
-    Necesito una minuta exclusivamente para {type_food} para {people_number} personas, con preferencia {dietary_preference}, comenzando desde {starting_date}.
-    Las fechas deben ser consecutivas y no deben faltar días. Calcula cuántos días puede durar la minuta en función de la cantidad de alimentos disponible, 
-    cantidad de personas y preferencia. Utiliza la cantidad adecuada de ingredientes por día.
-    Aprovecha al máximo todos los ingredientes disponibles en la despensa para crear platos variados y balanceados.
-    Responde únicamente en formato JSON. Proporciona la respuesta en el siguiente formato JSON:
+    **Objetivos principales:**
+    1.Necesito una minuta exclusivamente para {type_food} para {people_number} personas, con preferencia {dietary_preference}, comenzando desde {starting_date}.
+    2.Las fechas deben ser consecutivas y no deben faltar días. Calcula cuántos días puede durar la minuta en función de la cantidad de alimentos disponible, cantidad de personas y preferencia. Utiliza la cantidad adecuada de ingredientes por día.
+    3.Aprovecha al máximo todos los ingredientes disponibles en la despensa para crear platos variados y balanceados.
+    4.Responde únicamente en formato JSON. Proporciona la respuesta en el siguiente formato JSON:
     
     Formato de salida:
     {{ "name_food": "nombre del plato",
@@ -179,8 +179,13 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
         {{ "producto": "pollo", "unidad": "kg", "cantidad": "1" , "uso_alimento": "almuerzo, cena" }},
     ]
 
-    IMPORTANTE: ASEGURATE DE UTILIZAR TODA LA CANITDAD DE ALIMENTOS DISPONIBLES EN LA DESPENSA
-    Instrucciones:
+    **Criterios de planificación:**
+    - Cada día debe incluir platos adecuados para {type_food}.
+    - Las cantidades de ingredientes deben calcularse con precisión para aprovecharlos al máximo hasta agotarlos.
+    - Si no hay suficiente variedad de ingredientes, utiliza platos repetidos pero balanceados.
+    - Evita opciones inadecuadas como meriendas o snacks (galletas, crema de cacahuate, etc.) como platos principales.
+    - Si no hay suficiente variedad de ingredientes, utiliza platos repetidos pero balanceados.
+    **Instrucciones adicionales:**
     - No hagas preguntas ni incluyas información adicional
     - Selecciona únicamente los ingredientes más adecuados para {type_food} (por ejemplo, no uses ingredientes de meriendas o almuerzos si solo se solicita desayuno).
     - No incluyas ingredientes de meriendas o almuerzos si solo se solicita desayuno.
