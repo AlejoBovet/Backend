@@ -29,12 +29,19 @@ def analizar_despensa(user_id):
         # Verificar si quedan alimentos en la despensa
         alimentos_dispensa = DispensaAlimento.objects.filter(dispensa=user.dispensa).count()
 
-        if alimentos_dispensa == 0:
-            #print("No hay alimentos en la despensa.")
-            return "No hay alimentos en la despensa."
+        #recuperar alimentos que estan es despensa pero no se usaron en la minuta
+        alimentos = []
+        info_minuta = InfoMinuta.objects.get(lista_minuta=ListaMinuta.objects.get(user=user, state_minuta=True))
+        alimentos_usados = info_minuta.alimentos_usados_ids
+        for alimento in DispensaAlimento.objects.filter(dispensa=user.dispensa):
+            if alimento.alimento.id_alimento not in alimentos_usados:
+                alimentos.append(alimento.alimento.name_alimento)
 
-        # Recuperar alimentos de la despensa
-        alimentos = user.dispensa.get_alimentos_details()
+        if alimentos_dispensa == 0 or len(alimentos) == 0:
+            #print("No hay alimentos en la despensa.")
+            return False
+
+
 
         # Enviar lista de alimentos a la función de sugerencias
         llm = ChatOpenAI(model_name="gpt-3.5-turbo", api_key=os.getenv("OPENAI_API_KEY"))
