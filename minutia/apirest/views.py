@@ -1069,8 +1069,8 @@ def desactivate_minuta(request):
     """
     Endpoint for deactivating a minuta of alimentos.
     """
-    user_id = request.query_params.get('user_id')
-    id_lista_minuta = request.query_params.get('ListaMinuta_id')
+    user_id = request.data.get('user_id')
+    id_lista_minuta = request.data.get('ListaMinuta_id')
 
     # Validar que todos los campos estén presentes
     if not all([user_id, id_lista_minuta]):

@@ -159,12 +159,10 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
     Necesito una minuta exclusivamente para {type_food} para {people_number} personas, con preferencia {dietary_preference}, comenzando desde {starting_date}.
     Las fechas deben ser consecutivas y no deben faltar días. Calcula cuántos días puede durar la minuta en función de la cantidad de alimentos disponible, 
     cantidad de personas y preferencia. Utiliza la cantidad adecuada de ingredientes por día.
-    Selecciona únicamente los ingredientes más adecuados para {type_food} (por ejemplo, no uses ingredientes de meriendas o almuerzos si solo se solicita desayuno).
-    Respeta estrictamente la preferencia dietética solicitada (por ejemplo, no incluyas carne en un menú vegano). 
-    No uses galletas o crema de cacahuate como comidas principales.
     Aprovecha al máximo todos los ingredientes disponibles en la despensa para crear platos variados y balanceados.
-    Responde únicamente en formato JSON. No hagas preguntas ni incluyas información adicional. Proporciona la respuesta en el siguiente formato JSON:
-    Foemato de salida:
+    Responde únicamente en formato JSON. Proporciona la respuesta en el siguiente formato JSON:
+    
+    Formato de salida:
     {{ "name_food": "nombre del plato",
         "type_food": "type_food",
         "fecha": "YYYY-MM-DD",
@@ -183,8 +181,11 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
 
     IMPORTANTE: ASEGURATE DE UTILIZAR TODA LA CANITDAD DE ALIMENTOS DISPONIBLES EN LA DESPENSA
     Instrucciones:
-    -
-
+    - No hagas preguntas ni incluyas información adicional
+    - Selecciona únicamente los ingredientes más adecuados para {type_food} (por ejemplo, no uses ingredientes de meriendas o almuerzos si solo se solicita desayuno).
+    - No incluyas ingredientes de meriendas o almuerzos si solo se solicita desayuno.
+    - Respeta estrictamente la preferencia dietética solicitada (por ejemplo, no incluyas carne en un menú vegano). 
+    - No uses galletas o crema de cacahuate como comidas principales.
      """
 
     prompt = PromptTemplate(input_variables=["extracted_text","alimentos_list", "people_number", "dietary_preference", "type_food", "starting_date"], template=template)
