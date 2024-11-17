@@ -275,6 +275,12 @@ def update_estado_dias(user_id, date, realizacion_minuta):
         if all(estado['state'] == 'c' for estado in estados_dias):
             lista_minuta_activa.state_minuta = False
             lista_minuta_activa.save()
+            # Actualizar el estado de los días en las estadísticas del usuario
+            # Obtener o crear las estadísticas del usuario
+            estadisticas, _ = EstadisticasUsuario.objects.get_or_create(usuario=user_id)
+            # Incrementar el total de planes completados
+            estadisticas.total_planes_completados += 1
+            estadisticas.save()
             return {"status": "True", "message": "Todos los días están completados, crea tu proximo plan."}
         else:
             return {"status": "False", "message": "No todos los días están completados."}

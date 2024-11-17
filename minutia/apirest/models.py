@@ -107,7 +107,8 @@ class InfoMinuta(models.Model):
     cantidad_personas = models.IntegerField()
     tipo_alimento = models.JSONField(blank=True,null=True)
     alimentos_usados_ids = models.JSONField(blank=True, default=list)
-    estado_dias = models.JSONField(blank=True, default=list)  # Nueva columna para el estado de los días
+    estado_dias = models.JSONField(blank=True, default=list)
+    contado_en_estadisticas = models.BooleanField(default=False)  # Nueva columna para el estado de los días
 
     def __str__(self):
         return f"InfoMinuta {self.id_info_minuta} - {self.tipo_dieta} ({self.cantidad_personas} personas)"
@@ -190,7 +191,6 @@ class EstadisticasUsuario(models.Model):
     promedio_duracion_alimentos = models.FloatField(default=0.0)
     reduccion_desperdicio = models.FloatField(default=0.0)
     proporcion_planes_completados = models.FloatField(default=0.0)
-    impacto_alimentos_minutas = models.FloatField(default=0.0)
     
     def __str__(self):
         return f"Estadísticas de {self.usuario}"

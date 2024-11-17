@@ -14,7 +14,6 @@ def actualizar_objetivo_minutas(sender, instance, **kwargs):
         instance (InfoMinuta): La instancia del modelo que se ha guardado.
         **kwargs: Argumentos adicionales.
     """
-    #print("estoy activo")
     try:
         # Verificar que el usuario tenga un objetivo activo de tipo "lista de minutas completas"
         if not Objetivo.objects.filter(user=instance.lista_minuta.user, id_tipo_objetivo__tipo_objetivo='lista de minutas completas', completado=False).exists():
@@ -61,17 +60,28 @@ def actualizar_alimentos_ingresados(sender, instance, created, **kwargs):
 
 
 # Signal para actualizar estadísticas plan completado
-@receiver(post_save, sender=InfoMinuta)
+""" @receiver(post_save, sender=InfoMinuta)
 def actualizar_planes_creados(sender, instance, **kwargs):
-    if all(estado.get('state') == 'c' for estado in instance.estado_dias):
-        try:
-            estadisticas, _ = EstadisticasUsuario.objects.get_or_create(usuario=instance.lista_minuta.user)
-            estadisticas.total_planes_completados += 1
-            estadisticas.save()
-        except Exception as e:
-            print(f"Error al actualizar las estadísticas de planes completados: {e}")
-
-
+    try:
+        # Verificar si la minuta ya ha sido contada en las estadísticas
+        if not instance.contado_en_estadisticas:
+            # Verificar si todos los días tienen el estado 'c'
+            estado_dias = instance.estado_dias
+            print(f"Estado de los días: {estado_dias}")  # Depuración
+            if all(estado.get('state') == 'c' for estado in estado_dias):
+                # Obtener o crear las estadísticas del usuario
+                estadisticas, _ = EstadisticasUsuario.objects.get_or_create(usuario=instance.lista_minuta.user)
+                # Incrementar el total de planes completados
+                estadisticas.total_planes_completados += 1
+                estadisticas.save()
+                # Marcar la minuta como contada en las estadísticas
+                instance.contado_en_estadisticas = True
+                instance.save()
+            else:
+                print(f"Estado de los días no cumple con la condición: {estado_dias}")
+    except Exception as e:
+        print(f"Error al actualizar las estadísticas de planes completados: {e}") """
+        
 # Signal para actualizar estadísticas  Porcentaje de Alimentos Aprovechados
 # Indica la eficiencia en el uso de los alimentos y si se está reduciendo el desperdicio.
 @receiver(post_save, sender=InfoMinuta)
@@ -179,3 +189,24 @@ def calcular_reduccion_desperdicio(sender, instance, created, **kwargs):
 
         except Exception as e:
             print(f"Error al actualizar el promedio promedio de reduccion de desperdico: {e}")
+
+# calcular proporcion de planes completados
+@receiver(post_save, sender=ListaMinuta)
+def calcular_proporcion_planes_completados(sender, instance, created, **kwargs):
+    # se calcula cada vez que se crea una minuta
+    if created:
+        try:
+            # Obtener el usuario a través de la relación lista_minuta
+            user_id = instance.user.id_user
+            # Obtener el total de planes creadas de la columna de estadisticas
+            total_planes_creados = EstadisticasUsuario.objects.get(usuario_id=user_id).total_planes_creados
+            # Obtener el total de planes completados de la columna de estadisticas
+            total_planes_completados = EstadisticasUsuario.objects.get(usuario_id=user_id).total_planes_completados
+            # Calcular la proporcion de planes completados
+            proporcion = (total_planes_completados / total_planes_creados) * 100
+            # Actualizar la proporcion en la tabla de estadisticas
+            estadisticas = EstadisticasUsuario.objects.get(usuario_id=user_id)
+            estadisticas.proporcion_planes_completados = proporcion
+            estadisticas.save()
+        except Exception as e:
+            print(f"Error al actualizar la proporcion de planes completados: {e}")

@@ -1779,3 +1779,68 @@ def consultar_progreso_objetivo(request):
     progreso_data = ProgresoObjetivoSerializer(progreso).data
 
     return Response({'progreso': progreso_data}, status=200)
+
+## ENDPOINT PARA ENTREGAR INFORMACION DE ESTADISTICAS DE USUARIO
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+    ]
+))
+def estadisticas_usuario(request):
+    """
+    Endpoint for getting the statistics of a user.\n
+    total_alimentos_ingresados: total productos join in despensa.\n
+    total_desperdicio_alimentos: total productos delete in despensa.\n
+    total_minutas_creadas: total minutas created by user.\n
+    total_planes_creados: total planes created by user.\n
+    total_minutas_realizadas: total minutas realized by user.\n
+    total_minutas_no_realizadas: total minutas not realized by user.\n
+    total_planes_realizados: total planes realized by user.\n
+    total_planes_no_realizados: total planes not realized by user.\n
+    porcentaje_alimentos_aprovechados: percentage of aprovechados products.\n
+    reduccion_desperdicio: reduction of desperdicio.\n
+    promedio_duracion_alimentos: average duration of products.\n
+    proporcion_planes_completados: proportion of planes completed by user.
+    """
+    user_id = request.query_params.get('user_id')
+
+    if not user_id:
+        return Response({'error': 'User ID is required.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    
+    try:
+        estadisticas = EstadisticasUsuario.objects.get(usuario=user)
+    except EstadisticasUsuario.DoesNotExist:
+        return Response({'error': 'No statistics found for the user.'}, status=404)
+    
+    # NO SE ESTÁN USANDO LOS SERIALIZADORES
+    
+    estadisticas_data = {
+
+        'total_alimentos_ingresados': estadisticas.total_alimentos_ingresados,
+        'total_desperdicio_alimentos': estadisticas.total_alimentos_eliminados,
+        'total_minutas_creadas': estadisticas.total_minutas_creadas,
+        'total_planes_creados': estadisticas.total_planes_creados,
+        'total_minutas_realizadas': estadisticas.total_minutas_completadas,
+        'total_minutas_no_realizadas': estadisticas.total_minutas_completadas - estadisticas.total_minutas_creadas,
+        'total_planes_realizados': estadisticas.total_planes_completados,
+        'total_planes_no_realizados': estadisticas.total_planes_creados - estadisticas.total_planes_completados,
+        'porcentaje_alimentos_aprovechados': estadisticas.porcentaje_alimentos_aprovechados,
+        'reduccion_desperdicio': estadisticas.reduccion_desperdicio,
+        'promedio_duracion_alimentos': estadisticas.promedio_duracion_alimentos,
+        'proporcion_planes_completados': estadisticas.proporcion_planes_completados
+    }
+       
+
+
+    return Response({'estadisticas': estadisticas_data}, status=200)

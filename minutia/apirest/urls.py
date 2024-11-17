@@ -34,4 +34,5 @@ urlpatterns = [
     re_path('consultar_objetivo/', views.consultar_objetivo),
     re_path('eliminar_objetivo/', views.eliminar_objetivo),
     re_path("consultar_progreso_objetivo/", views.consultar_progreso_objetivo),
+    re_path("estadisticas/", views.estadisticas_usuario),
 ]
