@@ -1,6 +1,6 @@
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from .models import InfoMinuta, Objetivo, ProgresoObjetivo
+from .models import DispensaAlimento, HistorialAlimentos, InfoMinuta, ListaMinuta, Objetivo, ProgresoObjetivo, Alimento, Minuta,  EstadisticasUsuario
 from django.utils import timezone
 from django.db import models
 
@@ -14,7 +14,7 @@ def actualizar_objetivo_minutas(sender, instance, **kwargs):
         instance (InfoMinuta): La instancia del modelo que se ha guardado.
         **kwargs: Argumentos adicionales.
     """
-    print("estoy activo")
+    #print("estoy activo")
     try:
         # Verificar que el usuario tenga un objetivo activo de tipo "lista de minutas completas"
         if not Objetivo.objects.filter(user=instance.lista_minuta.user, id_tipo_objetivo__tipo_objetivo='lista de minutas completas', completado=False).exists():
@@ -26,7 +26,7 @@ def actualizar_objetivo_minutas(sender, instance, **kwargs):
                 user=instance.lista_minuta.user,
                 id_tipo_objetivo__tipo_objetivo='lista de minutas completas',
                 completado=False
-            ).first()
+            ).first()  
 
             # Si existe un objetivo, actualizar el progreso
             if objetivo:
@@ -45,3 +45,62 @@ def actualizar_objetivo_minutas(sender, instance, **kwargs):
 
     except Exception as e:
         print(f"Error al actualizar el objetivo de minutas completas: {e}")
+
+# Signal para actualizar estadísticas al agregar un alimento
+@receiver(post_save, sender=DispensaAlimento)
+def actualizar_alimentos_ingresados(sender, instance, created, **kwargs):
+    if created:  # Si se agregó un nuevo alimento a la dispensa
+        try:
+            usuario = instance.dispensa.users  # Obtener el usuario a través de la relación dispensa
+            if usuario:
+                estadisticas, _ = EstadisticasUsuario.objects.get_or_create(usuario=usuario)
+                estadisticas.total_alimentos_ingresados += 1
+                estadisticas.save()
+        except Exception as e:
+            print(f"Error al actualizar el historial de alimentos ingresados: {e}")
+
+
+# Signal para actualizar estadísticas plan completado
+@receiver(post_save, sender=InfoMinuta)
+def actualizar_planes_creados(sender, instance, **kwargs):
+    if all(estado.get('state') == 'c' for estado in instance.estado_dias):
+        try:
+            estadisticas, _ = EstadisticasUsuario.objects.get_or_create(usuario=instance.lista_minuta.user)
+            estadisticas.total_planes_completados += 1
+            estadisticas.save()
+        except Exception as e:
+            print(f"Error al actualizar las estadísticas de planes completados: {e}")
+
+
+# Signal para actualizar estadísticas  Porcentaje de Alimentos Aprovechados
+# Indica la eficiencia en el uso de los alimentos y si se está reduciendo el desperdicio.
+@receiver(post_save, sender=InfoMinuta)
+def actualizar_porcentaje_alimentos_aprovechados(sender, instance, **kwargs):
+    if all(estado.get('state') == 'c' for estado in instance.estado_dias):
+        try:
+            usuario = instance.lista_minuta.user
+            estadisticas, _ = EstadisticasUsuario.objects.get_or_create(usuario=usuario)
+            total_alimentos = estadisticas.total_alimentos_ingresados
+            print(f"Total alimentos: {total_alimentos}")
+            total_alimentos_usados = sum(len(plan.alimentos_usados_ids) for plan in InfoMinuta.objects.filter(lista_minuta__user=usuario, lista_minuta__state_minuta=False))
+            print(f"Total alimentos usados: {total_alimentos_usados}")
+            porcentaje = (total_alimentos_usados / total_alimentos) * 100
+            estadisticas.porcentaje_alimentos_aprovechados = porcentaje
+            estadisticas.save()
+        except Exception as e:
+            print(f"Error al actualizar el porcentaje de alimentos aprovechados: {e}")
+
+# Signal para actualizar estadísticas al crear una minuta
+@receiver(post_save, sender=Minuta)
+def actualizar_minutas_creadas(sender, instance, created, **kwargs):
+    if created:  # Si se creó una nueva minuta
+        try:
+            usuario = instance.lista_minuta.user  # Obtener el usuario a través de la relación lista_minuta
+            if usuario:
+                estadisticas, _ = EstadisticasUsuario.objects.get_or_create(usuario=usuario)
+                estadisticas.total_minutas_creadas = Minuta.objects.filter(lista_minuta__user=usuario).count()
+                estadisticas.save()
+        except Exception as e:
+            print(f"Error al actualizar el historial de minutas creadas: {e}")
+
+# Signal para promediar la duración de productos en la despensa

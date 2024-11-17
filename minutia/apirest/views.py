@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.schemas import AutoSchema
 from django.utils import timezone
 from google.cloud import vision
-from .models import ProgresoObjetivo, TipoObjetivo, Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente,Sugerencias,HistorialAlimentos,Objetivo
+from .models import ProgresoObjetivo, TipoObjetivo, Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente,Sugerencias,HistorialAlimentos,Objetivo,EstadisticasUsuario
 from .serializer import ObjetivoSerializer, UsersSerializer, DispensaSerializer, ProgresoObjetivoSerializer
 from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta, notificacion_sugerencia
 from .helpers.controlminuta import editar_cantidad_ingrediente_minuta, minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter,obtener_y_validar_minuta_del_dia, update_estado_dias
@@ -95,7 +95,10 @@ def register(request):
         dispensa = Dispensa.objects.create()
         
         # Asignar la dispensa al usuario
-        serializer.save(dispensa=dispensa)
+        user = serializer.save(dispensa=dispensa)
+
+        # Crear fila de estadísticas de usuario con valores iniciales en 0
+        EstadisticasUsuario.objects.create(usuario=user)
         
         return Response(serializer.data, status=201)
 
@@ -375,7 +378,6 @@ def delete_alimento(request):
         return Response({'error': 'Alimento not found in the dispensa.'}, status=404)
     
     #validar si el alimento esta en una minuta activa en caso de que este y se quiera eliminar se desactiva la minuta
-    
     try:
         # Verificar si hay alimentos en la minuta
         alimentos_dispensa = DispensaAlimento.objects.filter(dispensa=dispensa).values_list('alimento_id', flat=True)
@@ -396,6 +398,11 @@ def delete_alimento(request):
         pass
 
     dispensa_alimento.delete()
+
+    #actualizar las estadisticas de usuario
+    estadisticas = EstadisticasUsuario.objects.get(usuario=user)
+    estadisticas.total_alimentos_eliminados += 1
+    estadisticas.save()
 
     # Actualizar el campo de última actualización de la dispensa
     dispensa.ultima_actualizacion = timezone.now()
@@ -470,9 +477,17 @@ def delete_all_alimentos(request):
     except ListaMinuta.DoesNotExist:
         pass
 
+    # Contar los alimentos antes de eliminarlos
+    total_alimentos_eliminados = DispensaAlimento.objects.filter(dispensa=dispensa).count()
+
     # Eliminar todos los alimentos de la dispensa
     DispensaAlimento.objects.filter(dispensa=dispensa).delete()
 
+    # Actualizar las estadísticas de usuario
+    estadisticas = EstadisticasUsuario.objects.get(usuario=user)
+    estadisticas.total_alimentos_eliminados += total_alimentos_eliminados
+    estadisticas.save()
+    
     # Actualizar el campo de última actualización de la dispensa
     dispensa.ultima_actualizacion = timezone.now()
     dispensa.save()
@@ -904,6 +919,10 @@ def create_meinuta(request):
         })
     # cargar en bd el estado de los dias
     InfoMinuta.objects.filter(lista_minuta=lista_minuta).update(estado_dias=estado_dias)
+    # Actualizar estadisticas de usuario
+    estadisticas = EstadisticasUsuario.objects.get(usuario=user)
+    estadisticas.total_planes_creados += 1
+    estadisticas.save()
 
     # Formatear las fechas de las minutas para la respuesta
     minutas_data = [
@@ -1268,12 +1287,18 @@ def control_uso_productos(request):
 
     #actualiar info minuta con el estado de los dias
     #traer el estado de los dias
-    update_estado_dias(user, date, realizado)
+    resultado2 = update_estado_dias(user, date, realizado)
     
-    if resultado['status'] == 'error':
-        return Response({'status': 'error', 'message': resultado['message']}, status=400)
+    if resultado['status'] == 'True' and resultado2['status'] == 'True':
+        return Response({'message2': resultado2['message'], 'message': resultado['message'],"descuento":resultado["alimentos_descontados"]}, status=200)
+    elif resultado['status'] == 'True' and resultado2['status'] == 'False':
+        return Response({'status': 'Vamos sigue asi', 'message': resultado['message'],"descuento":resultado["alimentos_descontados"]}, status=200)
+    elif resultado['status'] == 'False' and resultado2['status'] == 'False':
+        return Response({'status': 'Asegurate de seguir la proxima minuta', 'message': resultado['message']}, status=200)
+    else:
+        return Response({'status': 'Error', 'message': resultado['message']}, status=400)
 
-    return Response({'status': 'success', 'message': resultado['message']}, status=200)
+    
 
 
 # EDITAR LA CANTIDAD DE INGREDIENTE DE LA MINUTA DEL DIA 

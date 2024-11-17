@@ -1,5 +1,5 @@
 from collections import defaultdict
-from ..models import HistorialAlimentos, InfoMinuta, ListaMinuta
+from ..models import EstadisticasUsuario, HistorialAlimentos, InfoMinuta, ListaMinuta
 
 def calcular_uso_frecuente_por_comida(user):
     """
@@ -139,3 +139,30 @@ def data_minima_recomendacion_compra(user, type_recomendacion):
             return "error"
         return "pass"
     return "pass"
+
+## Metricas para estadisticas del usuario
+# Porcentaje de alimentos aprovechados
+def porcentaje_alimentos_aprovechados(user_id):
+    """
+    Muestra qué porcentaje de los alimentos ingresados han sido utilizados en planes completados.
+
+    Args:
+        user_id (int): ID del usuario.
+
+    Returns:
+        float: Porcentaje de alimentos aprovechados.
+    """
+    # Filtrar por id de usuario
+    total_alimentos = EstadisticasUsuario.objects.filter(user_id=user_id).first().total_alimentos_ingresados
+
+    # obtener la cantidad de alimentos usados en planes completados
+    # Recuperar los planes completados
+    planes_completados = InfoMinuta.objects.filter(lista_minuta__user=user_id, lista_minuta__state_minuta=False)
+    # Contar los alimentos usados en los planes completados
+    total_alimentos_usados = sum(len(plan.alimentos_usados_ids) for plan in planes_completados)
+    
+    porcentaje = (total_alimentos_usados / total_alimentos) * 100
+    
+    return porcentaje
+
+

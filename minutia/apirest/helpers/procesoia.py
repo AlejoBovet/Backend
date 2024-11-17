@@ -184,8 +184,7 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
     - Las cantidades de ingredientes deben calcularse con precisión para aprovecharlos al máximo hasta agotarlos.
     - Si no hay suficiente variedad de ingredientes, utiliza platos repetidos pero balanceados.
     - Evita opciones inadecuadas como meriendas o snacks (galletas, crema de cacahuate, etc.) como platos principales.
-    - Si no hay suficiente variedad de ingredientes, utiliza platos repetidos pero balanceados.
-    **Instrucciones adicionales:**
+    **Instrucciones:**
     - No hagas preguntas ni incluyas información adicional
     - Selecciona únicamente los ingredientes más adecuados para {type_food} (por ejemplo, no uses ingredientes de meriendas o almuerzos si solo se solicita desayuno).
     - No incluyas ingredientes de meriendas o almuerzos si solo se solicita desayuno.

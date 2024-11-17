@@ -1,6 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
-from ..models import ListaMinuta, Minuta, Alimento, DispensaAlimento, InfoMinuta, MinutaIngrediente
+
+#from .Metricas import calcular_dias_promedio_despensa
+from ..models import EstadisticasUsuario, ListaMinuta, Minuta, Alimento, DispensaAlimento, InfoMinuta, MinutaIngrediente
 from .procesoia import analizar_repocision_productos
 from django.utils import timezone
 
@@ -167,8 +169,12 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
     if str(realizacion_minuta).strip().lower() == "true":
         # Iniciar proceso de IA para analizar qué productos reponer en la despensa
         analisis_reposicion = analizar_repocision_productos(minutas_list, alimentos_usados_list)
-        print("Respuesta de la IA: ", analisis_reposicion)
-
+        #print("Respuesta de la IA: ", analisis_reposicion)
+        # Actualizar las estadísticas del usuario, sumando 1 a total_minutas_completadas
+        estadisticas = EstadisticasUsuario.objects.get(usuario=user)
+        estadisticas.total_minutas_completadas += 1
+        estadisticas.save()
+        # guardar dias que estubo en la despensa
         for alimento in analisis_reposicion:
             try:
                 alimento_obj = Alimento.objects.get(id_alimento=int(alimento["id_alimento"]))
@@ -197,10 +203,19 @@ def obtener_y_validar_minuta_del_dia(user, date, realizacion_minuta):
                 # Si la cantidad es mayor a 0, restar cantidad y crear un nuevo alimento
                 alimento_obj.load_alimento = nueva_cantidad
                 alimento_obj.save()
-        return {"status": "success", "message": "Minuta cumplida, se generó descuento de alimentos."}    
-
+        return {
+            "status": "True",
+            "message": "Minuta cumplida, se generó descuento de alimentos.",
+            "alimentos_descontados": [
+            {
+                "name_alimento": alimento["name_alimento"],
+                "cantidad_descontada": alimento["load_alimento"],
+                "unidad_medida": alimento["unit_measurement"]
+            } for alimento in analisis_reposicion
+            ]
+        }
     else:
-        return {"status": "success", "message": "No se realizó la minuta, no se genera descuento de alimentos."}   
+        return {"status": "False", "message": "No se realizó la minuta, no se genera descuento de alimentos."}   
     
 
 #funcion para actualizar estado_dias en la tabla InfoMinuta
@@ -213,26 +228,26 @@ def update_estado_dias(user_id, date, realizacion_minuta):
         date (datetime.date): Fecha para la cual se va a actualizar el estado.
 
     Returns:
-        None
+        bool: True si todos los estados son 'c' y se cambia state_minuta a False, False en caso contrario.
     """
     try:
         # Obtener la información de la minuta activa del usuario
         lista_minuta_activa = ListaMinuta.objects.filter(user_id=user_id, state_minuta=True).first()
         if not lista_minuta_activa:
             print("No hay minuta activa para el usuario.")
-            return
+            return False
 
         # Obtener el id de la minuta del día con la fecha actual
         minuta_dia = Minuta.objects.filter(lista_minuta=lista_minuta_activa, fecha=date).first()
         if not minuta_dia:
             print("No hay minuta para la fecha proporcionada.")
-            return
+            return False
 
         # Obtener la información de la minuta
         info_minuta = InfoMinuta.objects.filter(lista_minuta=lista_minuta_activa).first()
         if not info_minuta:
             print("No se encontró información de la minuta.")
-            return
+            return False
 
         # Obtener los estados de los días
         estados_dias = info_minuta.estado_dias or []
@@ -242,31 +257,29 @@ def update_estado_dias(user_id, date, realizacion_minuta):
 
         if str(realizacion_minuta).strip().lower() == "true":
             # Si la minuta se completó, actualizar el estado a 'c'
-            # Actualizar key state correspondiente al id de la minuta
             estados_dias.append({
-            "id_minuta": minuta_dia.id_minuta,
-            "state": "c"
+                "id_minuta": minuta_dia.id_minuta,
+                "state": "c"
             })
-
-            # Guardar los cambios en la base de datos
-            info_minuta.estado_dias = estados_dias
-            info_minuta.save()
         else:
-            # Si la minuta no se completó, actualizar el estado a 'i'
-            # Actualizar key state correspondiente al id de la minuta
+            # Si la minuta no se completó, actualizar el estado a 'nc'
             estados_dias.append({
-            "id_minuta": minuta_dia.id_minuta,
-            "state": "nc"
+                "id_minuta": minuta_dia.id_minuta,
+                "state": "nc"
             })
 
-            # Guardar los cambios en la base de datos
-            info_minuta.estado_dias = estados_dias
-            info_minuta.save()
+        # Guardar los cambios en la base de datos
+        info_minuta.estado_dias = estados_dias
+        info_minuta.save()
 
+        if all(estado['state'] == 'c' for estado in estados_dias):
+            lista_minuta_activa.state_minuta = False
+            lista_minuta_activa.save()
+            return {"status": "True", "message": "Todos los días están completados, crea tu proximo plan."}
+        else:
+            return {"status": "False", "message": "No todos los días están completados."}
     except Exception as e:
-        print(f"Error al actualizar el estado de los días: {e}")
-
-    return None
+        return {"status": "error", "message": f"Error al actualizar el estado de los días: {e}"}
 
 # Función para editar la cantidad de un ingrediente en la minuta
 def editar_cantidad_ingrediente_minuta(user, date, id_ingrediente, cantidad):

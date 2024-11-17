@@ -1,4 +1,5 @@
 from django.db import models
+from datetime import datetime
 
 class Alimento(models.Model):
     id_alimento = models.AutoField(primary_key=True)
@@ -6,9 +7,13 @@ class Alimento(models.Model):
     unit_measurement = models.CharField(max_length=255)
     load_alimento = models.DecimalField(max_digits=10, decimal_places=1)
     uso_alimento = models.CharField(max_length=255, blank=True, null=True)
+    fecha_ingreso = models.DateTimeField(default=datetime.now, blank=True)
 
     def __str__(self):
         return self.name_alimento
+
+    def formatted_fecha_ingreso(self):
+        return self.fecha_ingreso.strftime('%Y/%m/%d')
 
 class DispensaAlimento(models.Model):
     dispensa = models.ForeignKey('Dispensa', on_delete=models.CASCADE)
@@ -114,6 +119,7 @@ class HistorialAlimentos(models.Model):
     load_alimento = models.DecimalField(max_digits=10, decimal_places=1)
     user_id = models.IntegerField(null=True, blank=True)
     uso_alimento = models.CharField(max_length=255)
+    dias_en_despensa = models.IntegerField(null=True)
 
     def __str__(self):
         return f"Historial {self.id_historial} - {self.name_alimento}"
@@ -161,3 +167,21 @@ class ProgresoObjetivo(models.Model):
 
     def __str__(self):
         return f"{self.objetivo.id_tipo_objetivo.tipo_objetivo} - {self.fecha}"
+    
+
+class EstadisticasUsuario(models.Model):
+    usuario = models.OneToOneField(Users, related_name='estadisticas', on_delete=models.CASCADE)
+    total_alimentos_ingresados = models.PositiveIntegerField(default=0)
+    total_alimentos_eliminados = models.PositiveIntegerField(default=0)
+    total_minutas_creadas = models.PositiveIntegerField(default=0)
+    total_minutas_completadas = models.PositiveIntegerField(default=0)
+    total_planes_creados = models.PositiveIntegerField(default=0)
+    total_planes_completados = models.PositiveIntegerField(default=0)
+    porcentaje_alimentos_aprovechados = models.FloatField(default=0.0)
+    promedio_duracion_alimentos = models.FloatField(default=0.0)
+    reduccion_desperdicio = models.FloatField(default=0.0)
+    proporcion_planes_completados = models.FloatField(default=0.0)
+    impacto_alimentos_minutas = models.FloatField(default=0.0)
+    
+    def __str__(self):
+        return f"Estadísticas de {self.usuario}"
