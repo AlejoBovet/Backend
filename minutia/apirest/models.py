@@ -168,6 +168,15 @@ class ProgresoObjetivo(models.Model):
     def __str__(self):
         return f"{self.objetivo.id_tipo_objetivo.tipo_objetivo} - {self.fecha}"
     
+class Desperdicio(models.Model):
+    id_desperdicio = models.AutoField(primary_key=True)
+    user_id = models.IntegerField(null=True, blank=True)
+    cantidad = models.FloatField()
+    fecha = models.DateField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.alimento.name_alimento} - {self.cantidad}"
+    
 
 class EstadisticasUsuario(models.Model):
     usuario = models.OneToOneField(Users, related_name='estadisticas', on_delete=models.CASCADE)

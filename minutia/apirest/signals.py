@@ -1,6 +1,6 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from .models import DispensaAlimento, HistorialAlimentos, InfoMinuta, ListaMinuta, Objetivo, ProgresoObjetivo, Alimento, Minuta,  EstadisticasUsuario
+from .models import Desperdicio, DispensaAlimento, HistorialAlimentos, InfoMinuta, ListaMinuta, Objetivo, ProgresoObjetivo, Alimento, Minuta,  EstadisticasUsuario
 from django.utils import timezone
 from django.db import models
 
@@ -130,3 +130,52 @@ def promediar_duracion_despensa(sender, instance, created, **kwargs):
             estadisticas.save()
         except Exception as e:
             print(f"Error al actualizar el promedio de duración de alimentos: {e}")
+
+ # calcular desperdicio semanal
+@receiver(post_save, sender=ListaMinuta)
+def calcular_desperdicio_semanal(sender, instance, created, **kwargs):
+    # se calcula cada vez que se crea una minuta  
+    if created:
+        try:
+            # Obtener el usuario a través de la relación lista_minuta
+            user_id = instance.user.id_user
+            # Obtener los valores de las columnas de estadisticas
+            estadisticas = EstadisticasUsuario.objects.get(usuario_id=user_id)
+            # Obtener el total de alimentos ingresados
+            total_alimentos = estadisticas.total_alimentos_ingresados
+            # Obtener el total de alimentos eliminados de la columna de estadisticas
+            total_alimentos_eliminados = estadisticas.total_alimentos_eliminados
+            # calcular el desperdicio
+            porcentaje_alimentos_desperdiciados = (total_alimentos_eliminados / total_alimentos) * 100
+
+            # Guardar en tabla de desperdicio
+            desperdicio = Desperdicio.objects.create(
+                user_id=user_id,
+                cantidad=porcentaje_alimentos_desperdiciados,
+                fecha=timezone.now().strftime('%Y-%m-%d')
+            )
+            desperdicio.save()
+        except Exception as e:
+            print(f"Error al actualizar el desperdicio: {e}")
+
+# calcular reducción de desperdicio
+@receiver(post_save, sender=Desperdicio)
+def calcular_reduccion_desperdicio(sender, instance, created, **kwargs):
+    # calcular cada ves que se agrege un nuevo registro a la tabla de desperdicio asociado a un usuario
+    if created:
+        try:
+            # Obtener el usuario de la tabla de estadisticas
+            user_id = instance.user_id
+            # Obtener los dos ultimos registros de desperdicio asociados al usuario (por fecha)
+            desperdicios = Desperdicio.objects.filter(user_id=user_id).order_by('-fecha')[:2]
+            # Si hay dos registros
+            if len(desperdicios) == 2:
+                # Calcular la reducción de desperdicio
+                reduccion = desperdicios[0].cantidad - desperdicios[1].cantidad
+                # Actualizar la reducción en la tabla de estadisticas
+                estadisticas = EstadisticasUsuario.objects.get(usuario_id=user_id)
+                estadisticas.reduccion_desperdicio = reduccion
+                estadisticas.save()
+
+        except Exception as e:
+            print(f"Error al actualizar el promedio promedio de reduccion de desperdico: {e}")
