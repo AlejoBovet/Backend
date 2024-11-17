@@ -1,5 +1,7 @@
 from collections import defaultdict
-from ..models import EstadisticasUsuario, HistorialAlimentos, InfoMinuta, ListaMinuta
+from datetime import datetime, date
+from django.utils import timezone
+from ..models import EstadisticasUsuario, HistorialAlimentos, InfoMinuta, ListaMinuta, Alimento, DispensaAlimento, Dispensa, Minuta, MinutaIngrediente, Users
 
 def calcular_uso_frecuente_por_comida(user):
     """
@@ -165,4 +167,98 @@ def porcentaje_alimentos_aprovechados(user_id):
     
     return porcentaje
 
+# tiempo de alimento en la despensa
+def tiempo_alimento_despensa(user, fecha_uso):
+    """
+    Calcula el tiempo promedio que un alimento permanece en la despensa antes de ser utilizado.
 
+    Args:
+        user_id (int): ID del usuario.
+        fecha (datetime): Fecha actual.
+
+    Returns:
+        float: Tiempo promedio de permanencia de un alimento en la despensa.
+    """
+    # Convertir fecha_uso a datetime si es necesario
+    if isinstance(fecha_uso, date):
+        fecha_uso = datetime.combine(fecha_uso, datetime.min.time())
+
+    # Asegurarse de que fecha_uso sea offset-naive
+    if fecha_uso.tzinfo is not None and fecha_uso.utcoffset() is not None:
+        fecha_uso = fecha_uso.replace(tzinfo=None)
+
+    # Obtener la dispensa del usuario
+    user_id = user.id_user
+    try:
+        dispensa_user = Users.objects.get(id_user=user_id).dispensa
+    except Users.DoesNotExist:
+        print(f"Usuario no encontrado con ID {user_id}")
+        return 0
+
+    # Obtener los id y fechas de los alimentos de la despensa
+    alimentos_dispensa = DispensaAlimento.objects.filter(dispensa=dispensa_user)
+    alimentos = []
+    for alimento in alimentos_dispensa:
+        # Asegurarse de que fecha_ingreso sea offset-naive
+        fecha_ingreso = alimento.alimento.fecha_ingreso
+        if fecha_ingreso.tzinfo is not None and fecha_ingreso.utcoffset() is not None:
+            fecha_ingreso = fecha_ingreso.replace(tzinfo=None)
+        alimentos.append({
+            "id_alimento": alimento.alimento.id_alimento,
+            "name_alimento": alimento.alimento.name_alimento,
+            "fecha_ingreso": fecha_ingreso
+        })
+
+    # Obtener la minuta activa del usuario
+    try:
+        minuta_activa = ListaMinuta.objects.get(user_id=user_id, state_minuta=True)
+    except ListaMinuta.DoesNotExist:
+        print(f"No hay minuta activa para el usuario {user_id}")
+        return 0
+
+    # Obtener los alimentos de la minuta activa
+    try:
+        minuta_dia = Minuta.objects.get(lista_minuta=minuta_activa, fecha=fecha_uso)
+    except Minuta.DoesNotExist:
+        print(f"No hay minuta para la fecha {fecha_uso} para el usuario {user_id}")
+        return 0
+
+    # Obtener los alimentos usados en la minuta del día
+    alimentos_usados = MinutaIngrediente.objects.filter(id_minuta=minuta_dia)
+    alimentos_minuta = []
+    for alimento in alimentos_usados:
+        alimentos_minuta.append(alimento.nombre_ingrediente)
+
+    # Obtener los alimentos que se usaron igualando nombre de alimento
+    alimentos_usados_dispensa = []
+    for alimento in alimentos_minuta:
+        for alimento_dispensa in alimentos:
+            if alimento == alimento_dispensa["name_alimento"]:
+                alimentos_usados_dispensa.append(alimento_dispensa)
+
+    # Obtener el tiempo de los alimentos en la despensa
+    tiempo_alimento = []
+    for alimento in alimentos_usados_dispensa:
+        tiempo = (fecha_uso - alimento["fecha_ingreso"]).days
+        tiempo_alimento.append({
+            "id_alimento": alimento["id_alimento"],
+            "name_alimento": alimento["name_alimento"],
+            "tiempo": tiempo
+        })
+
+    # Guardar los días en la tabla de historial de alimentos según el ID que corresponda
+    for alimento in tiempo_alimento:
+        try:
+            historial_alimento = HistorialAlimentos.objects.get(name_alimento=alimento["name_alimento"], user_id=user_id)
+            if historial_alimento.dias_en_despensa is None:
+                historial_alimento.dias_en_despensa = alimento["tiempo"]
+                historial_alimento.save()
+            else:
+                # No sobreescribir
+                pass
+        except HistorialAlimentos.DoesNotExist:
+            # Handle the case where the record does not exist
+            print(f"HistorialAlimentos not found for {alimento['name_alimento']} and user {user_id}")
+            continue
+
+    return True

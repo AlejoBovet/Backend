@@ -9,7 +9,7 @@ from .serializer import ObjetivoSerializer, UsersSerializer, DispensaSerializer,
 from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta, notificacion_sugerencia
 from .helpers.controlminuta import editar_cantidad_ingrediente_minuta, minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter,obtener_y_validar_minuta_del_dia, update_estado_dias
 from .helpers.procesoia import crear_recomendacion_compra, extractdataticket, analyzeusoproductos, makeminuta, getreceta, pre_analicis_minuta
-from .helpers.Metricas import calcular_uso_frecuente_por_comida, data_minima_recomendacion_compra,obtener_dieta_mas_usada,typo_food_mas_utlizado
+from .helpers.Metricas import calcular_uso_frecuente_por_comida, data_minima_recomendacion_compra,obtener_dieta_mas_usada, tiempo_alimento_despensa,typo_food_mas_utlizado
 from .helpers.ControlObjetivos import control_objetivo_minuta
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
@@ -1284,6 +1284,9 @@ def control_uso_productos(request):
 
     #funcion para actualizar data de objetivos
     control_objetivo_minuta(user,realizado)
+
+    if resultado['status'] == 'True':
+        tiempo_alimento_despensa(user, date) 
 
     #actualiar info minuta con el estado de los dias
     #traer el estado de los dias

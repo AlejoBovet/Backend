@@ -104,3 +104,29 @@ def actualizar_minutas_creadas(sender, instance, created, **kwargs):
             print(f"Error al actualizar el historial de minutas creadas: {e}")
 
 # Signal para promediar la duración de productos en la despensa
+@receiver(post_save, sender=InfoMinuta)
+def promediar_duracion_despensa(sender, instance, created, **kwargs):
+    # si se actualiza el historial de alimentos
+    if not created and 'estado_dias' in instance.__dict__:
+        try:
+            # Obtener el usuario a través de la relación lista_minuta
+            user_id = instance.lista_minuta.user.id_user
+            # Obtener los alimentos asociados al usuario de la tabla HistorialAlimentos y que no tengan dias_en_despensa = None
+            alimentos = HistorialAlimentos.objects.filter(user_id=user_id, dias_en_despensa__isnull=False)
+            # Sumar los días en despensa de todos los alimentos
+            total_dias = alimentos.aggregate(total=models.Sum('dias_en_despensa'))['total']
+            if total_dias is None:
+                total_dias = 0
+            # Recuperar el total de alimentos ingresados desde la tabla EstadisticasUsuario
+            estadisticas = EstadisticasUsuario.objects.get(usuario_id=user_id)
+            total_alimentos = estadisticas.total_alimentos_ingresados
+            if total_alimentos == 0:
+                promedio = 0
+            else:
+                # Calcular el promedio
+                promedio = total_dias / total_alimentos
+            # Actualizar el promedio en la tabla EstadisticasUsuario
+            estadisticas.promedio_duracion_alimentos = promedio
+            estadisticas.save()
+        except Exception as e:
+            print(f"Error al actualizar el promedio de duración de alimentos: {e}")
