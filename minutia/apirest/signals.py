@@ -91,9 +91,11 @@ def actualizar_porcentaje_alimentos_aprovechados(sender, instance, **kwargs):
             usuario = instance.lista_minuta.user
             estadisticas, _ = EstadisticasUsuario.objects.get_or_create(usuario=usuario)
             total_alimentos = estadisticas.total_alimentos_ingresados
-            print(f"Total alimentos: {total_alimentos}")
-            total_alimentos_usados = sum(len(plan.alimentos_usados_ids) for plan in InfoMinuta.objects.filter(lista_minuta__user=usuario, lista_minuta__state_minuta=False))
-            print(f"Total alimentos usados: {total_alimentos_usados}")
+            # Usar un conjunto para evitar contar los mismos alimentos múltiples veces
+            alimentos_usados = set()
+            for plan in InfoMinuta.objects.filter(lista_minuta__user=usuario, lista_minuta__state_minuta=False):
+                alimentos_usados.update(plan.alimentos_usados_ids)
+            total_alimentos_usados = len(alimentos_usados)
             porcentaje = (total_alimentos_usados / total_alimentos) * 100
             estadisticas.porcentaje_alimentos_aprovechados = porcentaje
             estadisticas.save()
@@ -171,24 +173,27 @@ def calcular_desperdicio_semanal(sender, instance, created, **kwargs):
 # calcular reducción de desperdicio
 @receiver(post_save, sender=Desperdicio)
 def calcular_reduccion_desperdicio(sender, instance, created, **kwargs):
-    # calcular cada ves que se agrege un nuevo registro a la tabla de desperdicio asociado a un usuario
+    # Calcular cada vez que se agregue un nuevo registro a la tabla de desperdicio asociado a un usuario
     if created:
         try:
             # Obtener el usuario de la tabla de estadisticas
             user_id = instance.user_id
-            # Obtener los dos ultimos registros de desperdicio asociados al usuario (por fecha)
-            desperdicios = Desperdicio.objects.filter(user_id=user_id).order_by('-fecha')[:2]
+            # Obtener los dos últimos registros de desperdicio asociados al usuario (por id_desperdicio)
+            desperdicios = Desperdicio.objects.filter(user_id=user_id).order_by('-id_desperdicio')[:2]
             # Si hay dos registros
             if len(desperdicios) == 2:
                 # Calcular la reducción de desperdicio
                 reduccion = desperdicios[0].cantidad - desperdicios[1].cantidad
+                # Depuración: Imprimir los valores de cantidad
+                print(f"Cantidad actual: {desperdicios[0].cantidad}, Cantidad anterior: {desperdicios[1].cantidad}")
                 # Actualizar la reducción en la tabla de estadisticas
                 estadisticas = EstadisticasUsuario.objects.get(usuario_id=user_id)
                 estadisticas.reduccion_desperdicio = reduccion
                 estadisticas.save()
+                print(f"Reducción de desperdicio: {reduccion}")
 
         except Exception as e:
-            print(f"Error al actualizar el promedio promedio de reduccion de desperdico: {e}")
+            print(f"Error al actualizar el promedio de reducción de desperdicio: {e}")
 
 # calcular proporcion de planes completados
 @receiver(post_save, sender=ListaMinuta)

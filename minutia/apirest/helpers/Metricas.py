@@ -246,16 +246,29 @@ def tiempo_alimento_despensa(user, fecha_uso):
             "tiempo": tiempo
         })
 
-    # Guardar los días en la tabla de historial de alimentos según el ID que corresponda
+     #Guardar los días en la tabla de historial de alimentos según el ID que corresponda
     for alimento in tiempo_alimento:
         try:
-            historial_alimento = HistorialAlimentos.objects.get(name_alimento=alimento["name_alimento"], user_id=user_id)
-            if historial_alimento.dias_en_despensa is None:
+            # Obtener el historial de alimentos con el nombre y user_id especificados
+            historial_alimentos = HistorialAlimentos.objects.filter(
+                name_alimento=alimento["name_alimento"],
+                user_id=user_id
+            ).order_by('id_historial')
+
+            # Filtrar los registros con dias_en_despensa igual a None
+            historial_alimentos_none = historial_alimentos.filter(dias_en_despensa__isnull=True)
+            if historial_alimentos_none.exists():
+                historial_alimento = historial_alimentos_none.first()
                 historial_alimento.dias_en_despensa = alimento["tiempo"]
                 historial_alimento.save()
             else:
-                # No sobreescribir
-                pass
+                historial_alimento = historial_alimentos.first()
+                if historial_alimento.dias_en_despensa is None:
+                    historial_alimento.dias_en_despensa = alimento["tiempo"]
+                    historial_alimento.save()
+                else:
+                    # No sobreescribir
+                    pass
         except HistorialAlimentos.DoesNotExist:
             # Handle the case where the record does not exist
             print(f"HistorialAlimentos not found for {alimento['name_alimento']} and user {user_id}")

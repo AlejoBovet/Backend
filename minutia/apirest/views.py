@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.schemas import AutoSchema
 from django.utils import timezone
 from google.cloud import vision
-from .models import ProgresoObjetivo, TipoObjetivo, Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente,Sugerencias,HistorialAlimentos,Objetivo,EstadisticasUsuario
+from .models import Desperdicio, ProgresoObjetivo, TipoObjetivo, Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente,Sugerencias,HistorialAlimentos,Objetivo,EstadisticasUsuario
 from .serializer import ObjetivoSerializer, UsersSerializer, DispensaSerializer, ProgresoObjetivoSerializer
 from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta, notificacion_sugerencia
 from .helpers.controlminuta import editar_cantidad_ingrediente_minuta, minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter,obtener_y_validar_minuta_del_dia, update_estado_dias
@@ -1796,16 +1796,17 @@ def estadisticas_usuario(request):
     """
     Endpoint for getting the statistics of a user.\n
     total_alimentos_ingresados: total productos join in despensa.\n
-    total_desperdicio_alimentos: total productos delete in despensa.\n
+    total_desperdicio_alimentos: total productos delete in despensa,Una disminución en este número refleja una mejor planificación y aprovechamiento.\n
     total_minutas_creadas: total minutas created by user.\n
     total_planes_creados: total planes created by user.\n
     total_minutas_realizadas: total minutas realized by user.\n
     total_minutas_no_realizadas: total minutas not realized by user.\n
     total_planes_realizados: total planes realized by user.\n
     total_planes_no_realizados: total planes not realized by user.\n
-    porcentaje_alimentos_aprovechados: percentage of aprovechados products.\n
-    reduccion_desperdicio: reduction of desperdicio.\n
-    promedio_duracion_alimentos: average duration of products.\n
+    porcentaje_alimentos_aprovechados: percentage of aprovechados products, Indica la eficiencia en el uso de los alimentos y si se está reduciendo el desperdicio.\n
+    desperdicio_actual: desperdicio actual (entre las ultimas 2 minutas creadas), muestra que porcentaje de productos se han desperdiciado .\n
+    reduccion_desperdicio: reduction of desperdicio Refleja si las estrategias de planificación están funcionando para minimizar el desperdicio..\n
+    promedio_duracion_alimentos: average duration of products, muestra con que velocidad se utlizan los productos en despensa.\n
     proporcion_planes_completados: proportion of planes completed by user.
     """
     user_id = request.query_params.get('user_id')
@@ -1823,24 +1824,25 @@ def estadisticas_usuario(request):
     except EstadisticasUsuario.DoesNotExist:
         return Response({'error': 'No statistics found for the user.'}, status=404)
     
+    # Traer el último registro de desperdicio
+    ultimo_registro = Desperdicio.objects.filter(user_id=user_id).order_by('-fecha').first()
+    
     # NO SE ESTÁN USANDO LOS SERIALIZADORES
     
     estadisticas_data = {
-
         'total_alimentos_ingresados': estadisticas.total_alimentos_ingresados,
         'total_desperdicio_alimentos': estadisticas.total_alimentos_eliminados,
         'total_minutas_creadas': estadisticas.total_minutas_creadas,
         'total_planes_creados': estadisticas.total_planes_creados,
         'total_minutas_realizadas': estadisticas.total_minutas_completadas,
-        'total_minutas_no_realizadas': estadisticas.total_minutas_completadas - estadisticas.total_minutas_creadas,
+        'total_minutas_no_realizadas': (estadisticas.total_minutas_creadas - estadisticas.total_minutas_completadas ),
         'total_planes_realizados': estadisticas.total_planes_completados,
         'total_planes_no_realizados': estadisticas.total_planes_creados - estadisticas.total_planes_completados,
         'porcentaje_alimentos_aprovechados': estadisticas.porcentaje_alimentos_aprovechados,
+        'desperdicio_actual': ultimo_registro.cantidad if ultimo_registro else None,
         'reduccion_desperdicio': estadisticas.reduccion_desperdicio,
         'promedio_duracion_alimentos': estadisticas.promedio_duracion_alimentos,
         'proporcion_planes_completados': estadisticas.proporcion_planes_completados
     }
-       
-
 
     return Response({'estadisticas': estadisticas_data}, status=200)
