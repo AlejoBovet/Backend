@@ -11,6 +11,7 @@ from .helpers.controlminuta import editar_cantidad_ingrediente_minuta, minimoali
 from .helpers.procesoia import crear_recomendacion_compra, extractdataticket, analyzeusoproductos, makeminuta, getreceta, pre_analicis_minuta
 from .helpers.Metricas import calcular_uso_frecuente_por_comida, data_minima_recomendacion_compra,obtener_dieta_mas_usada, tiempo_alimento_despensa,typo_food_mas_utlizado
 from .helpers.ControlObjetivos import control_objetivo_minuta
+from .helpers.ControlAcronicos import control_acronimos
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -154,8 +155,11 @@ def getinto_ticket(request):
     # Extraer el texto del OCR
     extracted_text = response.full_text_annotation.text
 
+    # Reemplazar acrónimos en el texto extraído
+    extracted_text2 = control_acronimos(extracted_text)
+
     #ejecutar funcion modulada para extraer la data
-    alimentos = extractdataticket(extracted_text)
+    alimentos = extractdataticket(extracted_text2)
 
     #ejecutar asignacion de alimentos a la dispensa
     alimentos = analyzeusoproductos(alimentos)

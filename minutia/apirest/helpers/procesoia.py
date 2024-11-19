@@ -61,9 +61,9 @@ def extractdataticket(extracted_text):
     #print("Prompt Formateado:\n", formatted_prompt)
 
     llm_response = llm(formatted_prompt)
-
+    
     json_content = llm_response.content.strip()
-
+    print("Contenido de json_content (repr):", repr(json_content))
     alimentos=process_response(json_content)
     
     # Validar que los alimentos tengan valores válidos
