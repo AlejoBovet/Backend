@@ -1829,7 +1829,7 @@ def estadisticas_usuario(request):
         return Response({'error': 'No statistics found for the user.'}, status=404)
     
     # Traer el último registro de desperdicio
-    ultimo_registro = Desperdicio.objects.filter(user_id=user_id).order_by('-fecha').first()
+    ultimo_registro = Desperdicio.objects.filter(user_id=user_id).order_by('-id_desperdicio').first()
     
     # NO SE ESTÁN USANDO LOS SERIALIZADORES
     

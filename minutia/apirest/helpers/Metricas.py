@@ -217,17 +217,17 @@ def tiempo_alimento_despensa(user, fecha_uso):
         return 0
 
     # Obtener los alimentos de la minuta activa
-    try:
-        minuta_dia = Minuta.objects.get(lista_minuta=minuta_activa, fecha=fecha_uso)
-    except Minuta.DoesNotExist:
+    minutas_dia = Minuta.objects.filter(lista_minuta=minuta_activa, fecha=fecha_uso)
+    if not minutas_dia.exists():
         print(f"No hay minuta para la fecha {fecha_uso} para el usuario {user_id}")
         return 0
 
     # Obtener los alimentos usados en la minuta del día
-    alimentos_usados = MinutaIngrediente.objects.filter(id_minuta=minuta_dia)
     alimentos_minuta = []
-    for alimento in alimentos_usados:
-        alimentos_minuta.append(alimento.nombre_ingrediente)
+    for minuta_dia in minutas_dia:
+        alimentos_usados = MinutaIngrediente.objects.filter(id_minuta=minuta_dia)
+        for alimento in alimentos_usados:
+            alimentos_minuta.append(alimento.nombre_ingrediente)
 
     # Obtener los alimentos que se usaron igualando nombre de alimento
     alimentos_usados_dispensa = []
