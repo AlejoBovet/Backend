@@ -181,8 +181,8 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
 
     **Criterios de planificación:**
     - Cada día debe incluir platos adecuados para {type_food}.
-    - Las cantidades de ingredientes deben calcularse con precisión para aprovecharlos al máximo hasta agotarlos.
-    - Si no hay suficiente variedad de ingredientes, utiliza platos repetidos pero balanceados.
+    - *Las cantidades de ingredientes deben calcularse con precisión para aprovecharlos al máximo hasta agotarlos.*
+    - Si no hay suficiente variedad de ingredientes, puedes repetir platos.
     - Evita opciones inadecuadas como meriendas o snacks (galletas, crema de cacahuate, etc.) como platos principales.
     **Instrucciones:**
     - No hagas preguntas ni incluyas información adicional

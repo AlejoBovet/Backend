@@ -1843,7 +1843,7 @@ def estadisticas_usuario(request):
         'total_planes_realizados': estadisticas.total_planes_completados,
         'total_planes_no_realizados': estadisticas.total_planes_creados - estadisticas.total_planes_completados,
         'porcentaje_alimentos_aprovechados': estadisticas.porcentaje_alimentos_aprovechados,
-        'desperdicio_actual': ultimo_registro.cantidad if ultimo_registro else None,
+        'desperdicio_actual': ultimo_registro.cantidad if ultimo_registro else 0,
         'reduccion_desperdicio': estadisticas.reduccion_desperdicio,
         'promedio_duracion_alimentos': estadisticas.promedio_duracion_alimentos,
         'proporcion_planes_completados': estadisticas.proporcion_planes_completados
