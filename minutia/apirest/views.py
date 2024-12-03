@@ -1789,7 +1789,7 @@ def consultar_progreso_objetivo(request):
     except Objetivo.DoesNotExist:
         return Response({'error': 'No active objective found for the user.'}, status=404)
     
-    progreso = ProgresoObjetivo.objects.get(objetivo=objetivo)
+    progreso = ProgresoObjetivo.objects.filter(objetivo=objetivo).order_by('-id').first()
     progreso_data = ProgresoObjetivoSerializer(progreso).data
 
     return Response({'progreso': progreso_data}, status=200)
