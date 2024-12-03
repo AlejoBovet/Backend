@@ -8,7 +8,7 @@ from .models import Desperdicio, ProgresoObjetivo, TipoObjetivo, Users,Dispensa,
 from .serializer import ObjetivoSerializer, UsersSerializer, DispensaSerializer, ProgresoObjetivoSerializer
 from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta, notificacion_sugerencia
 from .helpers.controlminuta import editar_cantidad_ingrediente_minuta, minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter,obtener_y_validar_minuta_del_dia, update_estado_dias
-from .helpers.procesoia import crear_recomendacion_compra, extractdataticket, analyzeusoproductos, makeminuta, getreceta, pre_analicis_minuta
+from .helpers.procesoia import crear_recomendacion_compra, extractdataticket, analisis_productos, makeminuta, getreceta, pre_analicis_minuta
 from .helpers.Metricas import calcular_uso_frecuente_por_comida, data_minima_recomendacion_compra,obtener_dieta_mas_usada, tiempo_alimento_despensa,typo_food_mas_utlizado
 from .helpers.ControlObjetivos import control_objetivo_minuta
 from .helpers.ControlAcronicos import control_acronimos
@@ -162,7 +162,7 @@ def getinto_ticket(request):
     alimentos = extractdataticket(extracted_text2)
 
     #ejecutar asignacion de alimentos a la dispensa
-    alimentos = analyzeusoproductos(alimentos)
+    alimentos = analisis_productos(alimentos)
 
     #correcion de aliomentos de desayuno
     alimentos = alimentos_desayuno(alimentos)
@@ -1237,9 +1237,19 @@ def get_receta(request):
     # Obtener número de personas 
     people_number = info_minuta.cantidad_personas
 
-    
-    receta = getreceta(name_minuta, people_number)
-    
+    ingredientes = minuta.ingredientes.all()
+    ingredientes = [
+        {
+            'nombre': ingrediente.nombre_ingrediente,
+            'tipo_medida': ingrediente.tipo_medida,
+            'cantidad': ingrediente.cantidad
+        } for ingrediente in ingredientes
+    ]
+
+    print(ingredientes)
+
+    receta = getreceta(name_minuta, people_number, ingredientes)
+
     return Response({'receta': receta}, status=200)
 
 #Control de uso productos en minuta

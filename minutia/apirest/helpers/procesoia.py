@@ -32,21 +32,21 @@ def extractdataticket(extracted_text):
                     los datos extraídos no son válidos.
     """
     template = """
-    Tengo la siguiente boleta de supermercado: '{extracted_text}'.
-    El formato del detalle de productos en la boleta es el siguiente:
-    Cada línea incluye:
-    -Código de producto (numérico).
-    -Nombre del producto.
-    -algunos pueden tener la cantidad del contenido (por ejemplo, '1 kg').
-    -Cantidad del producto (por ejemplo, '8 x' para 8 unidades).
-    -Precio unitario del producto en una columna alineada a la derecha.
-    -Algunos productos pueden tener líneas adicionales que indican descuentos aplicados."
-    Y la tarea que necesito esExtrae los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad en formato JSON de la siguiente manera:
+    Tengo la siguiente boleta de supermercado: '{extracted_text}' la cual debes analizar a detalle para extraer los productos y sus cantidades.
+    Asi que necesito es extraigas los nombres de los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad para guardarlo en formato JSON con el siguiente
+    debes fijarte en los siguientes puntos:
+    - formato listado de producto en boleta: cantidad ->4, -> multiplicador y precio X $759 codigo -> 7801907001762, nombre -> HAMB SJ, peso -> 90 G , precio final ->3.036
+    - hay productos que no tienen cantidad, solo precio y nombre ejemplo: codigo ->  7801235131117 nombre -> JUREL SAN JOSE peso -> 300 precio final 2.190
+    - Los productos pueden estar en mayúsculas, minúsculas o una combinación de ambas.
+    - La cantidad puede ser un número entero o decimal.
+    - La unidad de medida puede ser "kg", "gr", "lt" o "ml" o literales como "kilogramos", "gramos", "litros" o "mililitros".
+    - Si no puedes determinar la unidad de medida, asigna "kg" para productos sólidos y "lt" para productos líquidos.
     formato de salida:
     [
         {{ "producto": "nombre del producto", "unidad": "kg o gr o lt o ml", "cantidad": "cantidad" }}
     ]
     Instrucciones:
+    - *Quita cualquier producto que no sea un alimento.*
     -Envía solo el JSON con los alimentos sin texto adicional.
     -En caso de que no puedas determinar la unidad de medida, y el producto es sólido, asigna "unidad": "kg"; 
     -si es líquido, asigna "unidad": "lt". Evita usar "unidad" como valor de unidad.
@@ -76,7 +76,7 @@ def extractdataticket(extracted_text):
     return alimentos
 
 # Analizar uso de los pruductos 
-def analyzeusoproductos(alimentos_list):
+def analisis_productos(alimentos_list):
     template = """
     Tengo la siguiente lista de alimentos en formato JSON: {alimentos_list}.
     Para cada producto en esta lista, añade únicamente la clave "uso_alimento", indicando en qué comidas se puede usar el alimento (por ejemplo, "desayuno", "almuerzo", y/o "cena").
@@ -163,7 +163,7 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
     4.Responde únicamente en formato JSON. Proporciona la respuesta en el siguiente formato JSON:
     
     Formato de salida:
-    {{ "name_food": "nombre del plato",
+    {{ "name_food": "nombre del plato (no es necesario que sea específico)",
         "type_food": "type_food",
         "fecha": "YYYY-MM-DD",
          "ingredientes": [
@@ -205,11 +205,11 @@ def makeminuta (alimentos_list,people_number,dietary_preference,type_food,starti
     
     return minutas
 
-def getreceta (name_minuta,people_number):
-    llm = ChatOpenAI(model_name="gpt-3.5-turbo", api_key=openai_key)
+def getreceta (name_minuta,people_number,ingredientes):
+    llm = ChatOpenAI(model_name="gpt-4-turbo", api_key=openai_key)
     # Crear el prompt para la API
     template ="""
-    Proporciona la receta {name_minuta} para la cantidad de {people_number} personas. La receta debe ser devuelta en formato JSON, siguiendo esta estructura:
+    Proporciona la receta {name_minuta} utilizando esta cantidad de ingredientes {ingredientes} para la cantidad de {people_number} personas. La receta debe ser devuelta en formato JSON, siguiendo esta estructura:
 
     Formato de salida:
     {{
@@ -227,8 +227,8 @@ def getreceta (name_minuta,people_number):
     Usa solo los ingredientes y pasos esenciales para crear el plato.
     """
 
-    prompt = PromptTemplate(input_variables=[ "name_minuta", "people_number"], template=template)
-    formatted_prompt = prompt.format( name_minuta=name_minuta, people_number=people_number)
+    prompt = PromptTemplate(input_variables=[ "name_minuta", "people_number","ingredientes"], template=template)
+    formatted_prompt = prompt.format( name_minuta=name_minuta, people_number=people_number, ingredientes=ingredientes)
     
     # Cambia el uso de 'llm' para usar 'invoke'
     llm_response = llm.invoke(formatted_prompt)

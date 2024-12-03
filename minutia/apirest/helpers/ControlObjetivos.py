@@ -12,7 +12,9 @@ def control_objetivo_minuta(user_id, realizado):
         return None
     
     # Verificar que el objetivo sea de tipo minutas completas (ID = 1)
-    if objetivo.id_tipo_objetivo.id_tipo_objetivo != 1:
+    if objetivo.id_tipo_objetivo.id_tipo_objetivo ==1:
+        pass
+    else:
         return None
 
     # Si la minuta del día fue realizada
