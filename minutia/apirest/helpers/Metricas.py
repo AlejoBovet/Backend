@@ -125,7 +125,7 @@ def data_minima_recomendacion_compra(user, type_recomendacion):
         # Traer cantidad histórica de alimentos del usuario
         cantidad_alimentos = HistorialAlimentos.objects.filter(user_id=user_id).count()
         print(f"Cantidad de alimentos: {cantidad_alimentos}")
-        if cantidad_alimentos < 30:
+        if cantidad_alimentos < 15:
             return "error"
         return "pass"
     elif type_recomendacion == 2:
@@ -134,7 +134,7 @@ def data_minima_recomendacion_compra(user, type_recomendacion):
         if cantidad_minutas < 5:
             return "error"
         return "pass"
-    elif type_recomendacion == 3:
+    elif type_recomendacion == 2:
         cantidad_alimentos = HistorialAlimentos.objects.filter(user_id=user_id).count()
         cantidad_minutas = ListaMinuta.objects.filter(user=user).count()
         if cantidad_alimentos < 30 or cantidad_minutas < 3:

@@ -18,7 +18,7 @@ def control_objetivo_minuta(user_id, realizado):
         return None
 
     # Si la minuta del día fue realizada
-    if realizado == 'True':
+    if realizado == 'true':
         
         # Actualizar el progreso del objetivo
         progreso_acumulado_actual = objetivo.progresos.aggregate(total=models.Sum('progreso_diario'))['total'] or 0
