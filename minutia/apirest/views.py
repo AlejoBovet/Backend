@@ -4,10 +4,14 @@ from rest_framework.response import Response
 from rest_framework.schemas import AutoSchema
 from django.utils import timezone
 from google.cloud import vision
-from .models import Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta
-from .serializer import UsersSerializer,DispensaSerializer
-from .notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta
-from .controlminuta import minimoalimentospersona
+from .models import Desperdicio, ProgresoObjetivo, TipoObjetivo, Users,Dispensa,Alimento,DispensaAlimento,ListaMinuta,Minuta,InfoMinuta,MinutaIngrediente,Sugerencias,HistorialAlimentos,Objetivo,EstadisticasUsuario
+from .serializer import ObjetivoSerializer, UsersSerializer, DispensaSerializer, ProgresoObjetivoSerializer
+from .helpers.notificaciones import verificar_estado_minuta, verificar_dispensa, verificar_alimentos_minuta, notificacion_sugerencia
+from .helpers.controlminuta import editar_cantidad_ingrediente_minuta, minimoalimentospersona, alimentos_desayuno, listproduct_minutafilter,obtener_y_validar_minuta_del_dia, update_estado_dias
+from .helpers.procesoia import crear_recomendacion_compra, extractdataticket, analisis_productos, makeminuta, getreceta, pre_analicis_minuta
+from .helpers.Metricas import calcular_uso_frecuente_por_comida, data_minima_recomendacion_compra,obtener_dieta_mas_usada, tiempo_alimento_despensa,typo_food_mas_utlizado
+from .helpers.ControlObjetivos import control_objetivo_minuta
+from .helpers.ControlAcronicos import control_acronimos
 from langchain import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -22,7 +26,7 @@ from dateutil import parser
 
 
 #Cargar las keys para google OCT y ChatGPT
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "E://Informatica//AppMinutIA//Backend//ocrappminutia-e3a23be500d4.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv("RUTA_KEY_API_VISION")
 openai_key = os.getenv("OPENAI_API_KEY")
 
 # Cargar el modelo de OpenAI
@@ -77,6 +81,14 @@ def register(request):
     """
     Endpoint for user registration.
     """
+    name_user = request.data.get('name_user')
+    last_name_user = request.data.get('last_name_user')
+    year_user = request.data.get('year_user')
+    user_type = request.data.get('user_type')
+    
+    if not all([name_user, last_name_user, year_user, user_type]):
+        return Response({'error': 'No fueron completados toddos los campos.'}, status=400)
+
     serializer = UsersSerializer(data=request.data)
 
     if serializer.is_valid():
@@ -84,7 +96,10 @@ def register(request):
         dispensa = Dispensa.objects.create()
         
         # Asignar la dispensa al usuario
-        serializer.save(dispensa=dispensa)
+        user = serializer.save(dispensa=dispensa)
+
+        # Crear fila de estadísticas de usuario con valores iniciales en 0
+        EstadisticasUsuario.objects.create(usuario=user)
         
         return Response(serializer.data, status=201)
 
@@ -111,6 +126,9 @@ def register(request):
     ]
 ))
 def getinto_ticket(request):
+    """
+    Endpoint for registering the purchase of a ticket.
+    """
     user_id = request.data.get('user_id') 
     pdf_file = request.FILES.get('file')
 
@@ -137,43 +155,18 @@ def getinto_ticket(request):
     # Extraer el texto del OCR
     extracted_text = response.full_text_annotation.text
 
-    # Prompt para la IA
-    # Definir el template del prompt
-    template = """
-    Tengo la siguiente boleta de supermercado: '{extracted_text}'.
-    Extrae los alimentos, la unidad de medida (kg, gr, lt, ml) y la cantidad. También indica si el alimento se puede utilizar 
-    para desayuno, almuerzo y/o cena, y carga esta información en la clave 'uso_alimento' en formato de lista separada por comas. 
-    Responde en formato JSON de la siguiente manera:
-    [
-    {{ "producto": "nombre del producto", "unidad": "kg o gr o lt o ml", "cantidad": "cantidad", "uso_alimento": "desayuno, almuerzo, cena" }},
-    ]
-    Si el alimento es adecuado para más de una comida, enumera todas las opciones en la clave 'uso_alimento' de manera precisa. 
-    Por ejemplo, si el producto es carne, debería aparecer como "uso_alimento": "almuerzo, cena". En caso de que no puedas determinar la unidad de medida, 
-    y el producto es sólido, asigna "unidad": "kg"; si es líquido, asigna "unidad": "lt". Evita usar "unidad" como valor de unidad.
-    """
+    # Reemplazar acrónimos en el texto extraído
+    extracted_text2 = control_acronimos(extracted_text)
 
-    prompt = PromptTemplate(input_variables=["extracted_text"], template=template)
-    formatted_prompt = prompt.format(extracted_text=extracted_text)
-    print(formatted_prompt)
-    # Cambia el uso de 'llm' para usar 'invoke'
-    llm_response = llm.invoke(formatted_prompt)
-    print(llm_response)
-    # Accede al contenido del mensaje, si es necesario
-    json_content = llm_response.content.strip()
+    #ejecutar funcion modulada para extraer la data
+    alimentos = extractdataticket(extracted_text2)
 
-    print(json_content)
+    #ejecutar asignacion de alimentos a la dispensa
+    alimentos = analisis_productos(alimentos)
 
-    # Parsear la respuesta JSON
-    try:
-        alimentos = json.loads(json_content)
-    except json.JSONDecodeError:
-        return Response({'error': 'Invalid JSON format.'}, status=400)
-
-    # Validar que los alimentos tengan valores válidos
-    for alimento in alimentos:
-        if not alimento['cantidad'].replace('.', '', 1).isdigit():
-            return Response({'error': f"El valor de cantidad para el producto {alimento['producto']} no es válido."}, status=400)
-
+    #correcion de aliomentos de desayuno
+    alimentos = alimentos_desayuno(alimentos)
+    
     # Guardar los alimentos en la base de datos
     try:
         user = Users.objects.get(id_user=user_id)
@@ -202,6 +195,17 @@ def getinto_ticket(request):
     # Actualizar el campo de última actualización de la dispensa
     dispensa.ultima_actualizacion = timezone.now()
     dispensa.save() 
+
+    # guardar alimentos en tabla de HistorialAlimentos
+    for alimento in alimentos_guardados:
+        HistorialAlimentos.objects.create(
+            name_alimento=alimento['producto'],
+            unit_measurement=alimento['unidad'],
+            load_alimento=alimento['cantidad'],
+            uso_alimento=alimento['uso_alimento'],
+            user_id=user.id_user,
+        )
+        
 
     # Eliminar el archivo PDF temporal
     os.remove(temp_pdf_path)
@@ -236,16 +240,26 @@ def getinto_ticket(request):
             location="form",
             schema=coreschema.Integer(description='Load of the aliment.')
         ),
+        coreapi.Field(
+            name="uso_alimento",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Use of the aliment.')
+        ),
     ]
 ))
 def join_aliment(request):
+    """
+    Endpoint for manually adding an aliment to the despensa.
+    """
     user_id = request.data.get('user_id')
     name_alimento = request.data.get('name_aliment')
     unit_measurement = request.data.get('unit_measurement')
     load_alimento = request.data.get('load_alimento')
+    uso_alimento = request.data.get('uso_alimento')
 
     # Validar que todos los campos estén presentes
-    if not all([user_id, name_alimento, unit_measurement, load_alimento]):
+    if not all([user_id, name_alimento, unit_measurement, load_alimento, uso_alimento]):
         return Response({'error': 'All fields are required.'}, status=400)
     
     #control de error de datos ingresados
@@ -256,7 +270,10 @@ def join_aliment(request):
     # control unit_measurement
     if unit_measurement not in ['kg', 'gr', 'lt', 'ml']:
         return Response({'error': 'Unit measurement must be kg, gr, lt or ml.'}, status=400)
-
+    
+    # control uso_alimento
+    if uso_alimento not in ['desayuno', 'almuerzo', 'cena','desayuno,almuerzo','desayuno,cena','almuerzo,cena','desayuno,almuerzo,cena']:
+        return Response({'error': 'Use of the aliment must be desayuno, almuerzo, cena, desayuno, almuerzo, desayuno, cena, almuerzo, cena, desayuno, almuerzo, cena.'}, status=400)
 
     try:
         user = Users.objects.get(id_user=user_id)
@@ -270,7 +287,8 @@ def join_aliment(request):
     alimento = Alimento.objects.create(
         name_alimento=name_alimento,
         unit_measurement=unit_measurement,
-        load_alimento=load_alimento
+        load_alimento=load_alimento,
+        uso_alimento=uso_alimento
     )
 
     # Asociar el alimento a la dispensa en la tabla intermedia
@@ -280,11 +298,22 @@ def join_aliment(request):
     dispensa.ultima_actualizacion = timezone.now()
     dispensa.save()
 
+    # ingresar alimento en tabla de HistorialAlimentos
+    HistorialAlimentos.objects.create(
+            name_alimento=name_alimento,
+            unit_measurement=unit_measurement,
+            load_alimento=load_alimento,
+            uso_alimento=uso_alimento,
+            user_id=user_id,
+        )
+        
+
     return Response({'message': 'Alimento added successfully.', 'alimento': {
         'id_alimento': alimento.id_alimento,
         'name_alimento': alimento.name_alimento,
         'unit_measurement': alimento.unit_measurement,
-        'load_alimento': alimento.load_alimento
+        'load_alimento': alimento.load_alimento,
+        'uso_alimento': alimento.uso_alimento
     }}, status=201)
 
 @api_view(['DELETE'])
@@ -311,6 +340,11 @@ def join_aliment(request):
     ]
 ))
 def delete_alimento(request):
+    """
+    Endpoint for deleting an aliment from the despensa
+    in case the aliment is in a active minuta, the minuta is deactivated if the aliment is deleted
+    In app have to alert the user that the aliment is in a active minuta and is going to be deactivated
+    """
     user_id = request.query_params.get('user_id')
     dispensa_id = request.query_params.get('dispensa_id')
     alimento_id = request.query_params.get('alimento_id')
@@ -346,8 +380,33 @@ def delete_alimento(request):
         dispensa_alimento = DispensaAlimento.objects.get(dispensa=dispensa, alimento=alimento)
     except DispensaAlimento.DoesNotExist:
         return Response({'error': 'Alimento not found in the dispensa.'}, status=404)
+    
+    #validar si el alimento esta en una minuta activa en caso de que este y se quiera eliminar se desactiva la minuta
+    try:
+        # Verificar si hay alimentos en la minuta
+        alimentos_dispensa = DispensaAlimento.objects.filter(dispensa=dispensa).values_list('alimento_id', flat=True)
+        # Verificar si el alimento a eliminar está en la minuta
+        if alimento_id in alimentos_dispensa:
+            lista_minuta = ListaMinuta.objects.get(user=user, state_minuta=True)
+            info_minuta = InfoMinuta.objects.get(lista_minuta=lista_minuta.id_lista_minuta)
+            alimentos_en_minuta = info_minuta.alimentos_usados_ids
+            if alimento_id in alimentos_en_minuta:
+                alimentos_en_minuta.remove(alimento_id)
+                info_minuta.alimentos_usados_ids = alimentos_en_minuta
+                info_minuta.save()
+                alimentos_no_minuta = [alimento for alimento in alimentos_dispensa if alimento not in alimentos_en_minuta]
+                if not alimentos_no_minuta:
+                    lista_minuta.state_minuta = False
+                    lista_minuta.save()
+    except ListaMinuta.DoesNotExist:
+        pass
 
     dispensa_alimento.delete()
+
+    #actualizar las estadisticas de usuario
+    estadisticas = EstadisticasUsuario.objects.get(usuario=user)
+    estadisticas.total_alimentos_eliminados += 1
+    estadisticas.save()
 
     # Actualizar el campo de última actualización de la dispensa
     dispensa.ultima_actualizacion = timezone.now()
@@ -374,6 +433,9 @@ def delete_alimento(request):
     ]
 ))
 def delete_all_alimentos(request):
+    """
+    Endpoint for deleting all alimentos from the despensa.
+    """
     user_id = request.query_params.get('user_id')
     dispensa_id = request.query_params.get('dispensa_id')
     
@@ -404,10 +466,32 @@ def delete_all_alimentos(request):
         return Response({'error': 'Dispensa not found for the user.'}, status=404)
     except AttributeError:
         return Response({'error': 'User does not have a dispensa.'}, status=404)
+    
+    # si existe minuta activa y hay alimentos que estan en la minuta se desactiva la minuta
+    try:
+        # veificar si hay alimentos en la minuta
+        alimentos_dispensa = DispensaAlimento.objects.filter(dispensa=dispensa).values_list('alimento_id', flat=True)
+        lista_minuta = ListaMinuta.objects.get(user=user, state_minuta=True)
+        info_minuta = InfoMinuta.objects.get(lista_minuta=lista_minuta.id_lista_minuta)
+        alimentos_en_minuta = info_minuta.alimentos_usados_ids
+        alimentos_no_minuta = [alimento for alimento in alimentos_dispensa if alimento not in alimentos_en_minuta]
+        if alimentos_no_minuta:
+            lista_minuta.state_minuta = False
+            lista_minuta.save()
+    except ListaMinuta.DoesNotExist:
+        pass
+
+    # Contar los alimentos antes de eliminarlos
+    total_alimentos_eliminados = DispensaAlimento.objects.filter(dispensa=dispensa).count()
 
     # Eliminar todos los alimentos de la dispensa
     DispensaAlimento.objects.filter(dispensa=dispensa).delete()
 
+    # Actualizar las estadísticas de usuario
+    estadisticas = EstadisticasUsuario.objects.get(usuario=user)
+    estadisticas.total_alimentos_eliminados += total_alimentos_eliminados
+    estadisticas.save()
+    
     # Actualizar el campo de última actualización de la dispensa
     dispensa.ultima_actualizacion = timezone.now()
     dispensa.save()
@@ -454,17 +538,27 @@ def delete_all_alimentos(request):
             location="form",
             schema=coreschema.Integer(description='Load of the aliment.')
         ),
+        coreapi.Field(
+            name="uso_alimento",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Use of the aliment.')
+        ),
     ]
 ))
 def edit_alimento(request):
+    """
+    Endpoint for editing an aliment in the despensa.
+    """
     user_id = request.data.get('user_id')
     dispensa_id = request.data.get('dispensa_id')
     alimento_id = request.data.get('alimento_id')
     name_alimento = request.data.get('name_alimento')
     unit_measurement = request.data.get('unit_measurement')
     load_alimento = request.data.get('load_alimento')
+    uso_alimento = request.data.get('uso_alimento')
 
-    if not all([user_id, dispensa_id, alimento_id, name_alimento, unit_measurement, load_alimento]):
+    if not all([user_id, dispensa_id, alimento_id, name_alimento, unit_measurement, load_alimento, uso_alimento]):
         return Response({'error': 'All fields are required.'}, status=400)
 
     try:
@@ -496,6 +590,7 @@ def edit_alimento(request):
     alimento.name_alimento = name_alimento
     alimento.unit_measurement = unit_measurement
     alimento.load_alimento = load_alimento
+    alimento.uso_alimento = uso_alimento.lower()
     alimento.save()
 
     # Actualizar el campo de última actualización de la dispensa
@@ -506,13 +601,11 @@ def edit_alimento(request):
         'id_alimento': alimento.id_alimento,
         'name_alimento': alimento.name_alimento,
         'unit_measurement': alimento.unit_measurement,
-        'load_alimento': alimento.load_alimento
+        'load_alimento': alimento.load_alimento,
+        'uso_alimento': alimento.uso_alimento
     }}, status=200)
-    
 
-##  DISPENSA    
-
-#CONSULTAR DISPENSA
+#CONSULTAR SI HAY ALIMENTOS EN LA DISPENSA
 @api_view(['GET'])
 @schema(AutoSchema(
     manual_fields=[
@@ -530,7 +623,10 @@ def edit_alimento(request):
         ),
     ]
 ))
-def dispensa_detail(request):
+def status_despensa(request):
+    """
+    Endpoint for checking if there are alimentos in the despensa, if there are no alimentos, return false else return true.
+    """
     user_id = request.query_params.get('user_id')
     dispensa_id = request.query_params.get('dispensa_id')
 
@@ -555,7 +651,58 @@ def dispensa_detail(request):
     except AttributeError:
         return Response({'error': 'User does not have a dispensa.'}, status=404)
 
-    serializer = DispensaSerializer(dispensa)
+    if not dispensa.alimentos.exists():
+        return Response({'status': 'false'}, status=200)
+    else:
+        return Response({'status': 'true'}, status=200)
+
+##  DE  SPENSA    
+
+#CONSULTAR DESPENSA
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+        coreapi.Field(
+            name="dispensa_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='Dispensa ID.')
+        ),
+    ]
+))
+def despensa_detail(request):
+    """
+    Endpoint for getting the details of a user's despensa.
+    """
+    user_id = request.query_params.get('user_id')
+    dispensa_id = request.query_params.get('dispensa_id')
+
+    if not user_id or not dispensa_id:
+        return Response({'error': 'User ID and Dispensa ID are required.'}, status=400)
+
+    try:
+        user_id = int(user_id)
+        dispensa_id = int(dispensa_id)
+    except ValueError:
+        return Response({'error': 'User ID and Dispensa ID must be integers.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+
+    try:
+        dispensa = Dispensa.objects.get(id_dispensa=dispensa_id, users=user)
+    except Dispensa.DoesNotExist:
+        return Response({'error': 'Dispensa not found for the user.'}, status=404)
+    except AttributeError:
+        return Response({'error': 'User does not have a dispensa.'}, status=404)
 
     # Convertir la hora a la zona horaria local (Santiago) para la respuesta
     santiago_tz = pytz.timezone('America/Santiago')
@@ -565,6 +712,31 @@ def dispensa_detail(request):
     serializer = DispensaSerializer(dispensa)
     data = serializer.data
     data['ultima_actualizacion'] = ultima_actualizacion_local.strftime('%Y-%m-%d %H:%M:%S %Z%z')
+
+    # Devolver en la respuesta status_in_minuta: true si está en una minuta activa y false si no está en una minuta activa
+    try:
+        lista_minuta = ListaMinuta.objects.get(user=user, state_minuta=True)
+        info_minuta = InfoMinuta.objects.get(lista_minuta=lista_minuta.id_lista_minuta)
+        productos_en_minuta = info_minuta.alimentos_usados_ids
+
+        # Verificar si los productos de la despensa están en la minuta
+        productos_en_despensa = [alimento.id_alimento for alimento in dispensa.alimentos.all()]
+        status_in_minuta = {producto: (producto in productos_en_minuta) for producto in productos_en_despensa}
+
+        # Incluir el estado en cada alimento
+        for alimento in data['alimentos']:
+            alimento_id = alimento['alimento']['id_alimento']
+            alimento['alimento']['status_in_minuta'] = status_in_minuta.get(alimento_id, False)
+    except ListaMinuta.DoesNotExist:
+        for alimento in data['alimentos']:
+            alimento['alimento']['status_in_minuta'] = False
+    except InfoMinuta.DoesNotExist:
+        for alimento in data['alimentos']:
+            alimento['alimento']['status_in_minuta'] = False
+    except Exception as e:
+        print(f"Error al verificar el estado de la minuta: {e}")
+        for alimento in data['alimentos']:
+            alimento['alimento']['status_in_minuta'] = False
 
     return Response(data)
 
@@ -611,6 +783,9 @@ def dispensa_detail(request):
     ]
 ))
 def create_meinuta(request):
+    """
+    Endpoint for creating a minuta of alimentos.
+    """
     user_id = request.data.get('user_id')
     dispensa_id = request.data.get('dispensa_id')
     date_start = request.data.get('start_date')
@@ -654,69 +829,46 @@ def create_meinuta(request):
     
     if not alimentos_list:
         return Response({'error': 'No alimentos found in the dispensa.'}, status=400)
-   
-    # Validar que tenga la cantidad de alimentos necesarios según la cantidad de personas
-    minimo_alimentos = minimoalimentospersona(alimentos_list, people_number)
-    if minimo_alimentos:
-        print(f"Error: {minimo_alimentos}")
-        return Response({'error': minimo_alimentos}, status=400)
     
-    # valida si hay alimentos para el tipo de comida seleccionado
-    alimentos_list = [alimento for alimento in alimentos_list if type_food in alimento['uso']]
-    if not alimentos_list:
-        return Response({'error': 'No alimentos found for the selected type of food.'}, status=400)
-        
+    #Pre analisis de la dispensa
+    # Validar la minuta
+    valido = pre_analicis_minuta(alimentos_list, dietary_preference)
+    if valido.get('status') == "no viable":
+        return Response({'error': 'Con los productos actuales no es viable generar el tipo de dieta solicitado'}, status=400)
+   
+    # Filtrar los alimentos según el tipo de comida
+    alimentos_list = listproduct_minutafilter(alimentos_list, type_food)
+    print(alimentos_list)
 
+    # Validar que tenga la cantidad de alimentos necesarios según la cantidad de personas
+    errores = minimoalimentospersona(alimentos_list, people_number)
+    if errores:
+        print(f"Error: {errores}")
+        return Response({'error': errores}, status=400)
+        
+    # Crear la lista de alimentos usados
     List_productos = [alimento['id'] for alimento in alimentos_list] 
     
-
-    # se crea el prompt para la api
+    # asignar la fecha de inicio
     starting_date =  date_start
-    template = """
-    Tengo la siguiente despensa: [{alimentos_list}]. Solo puedes utilizar estos ingredientes.
-    Necesito una minuta para {people_number} personas con preferencia {dietary_preference} que incluya {type_food}, comenzando desde {starting_date}.
-    Las fechas deben ser consecutivas y no deben faltar días. Calcula cuántos días puede durar la minuta en función de la cantidad de alimentos disponible, cantidad de personas y preferencia. Utiliza la cantidad adecuada de ingredientes por día.
-    Asegúrate de seleccionar los ingredientes más adecuados para cada tipo de comida (por ejemplo, no uses ingredientes típicos de meriendas para el almuerzo) y respeta la preferencia dietética solicitada (por ejemplo, no incluyas carne en un menú vegano). No uses galletas o crema de cacahuate como comidas principales (desayuno, almuerzo o cena).
-    Aprovecha al máximo todos los ingredientes disponibles en la despensa para crear platos variados y balanceados.
-    Responde únicamente en formato JSON. No hagas preguntas ni incluyas información adicional. Proporciona la respuesta en el siguiente formato JSON:
-    [
-    {{ "name_food": "nombre del plato",
-        "type_food": "tipo de comida",
-        "fecha": "YYYY-MM-DD" }}
-    ]
-    Aquí tienes un ejemplo de cómo esta estructurada la despensa:
-    [
-        {{ "producto": "arroz", "unidad": "kg", "cantidad": "2" }},
-        {{ "producto": "pollo", "unidad": "kg", "cantidad": "1" }},
-        ]
-     """
-
-    prompt = PromptTemplate(input_variables=["extracted_text","alimentos_list", "people_number", "dietary_preference", "type_food", "starting_date"], template=template)
-    formatted_prompt = prompt.format(alimentos_list=alimentos_list, people_number=people_number, dietary_preference=dietary_preference, type_food=type_food, starting_date=starting_date)
     
-    # Cambia el uso de 'llm' para usar 'invoke'
-    llm_response = llm.invoke(formatted_prompt)
+    max_attempts = 5
+    attempts = 0
 
-    # Accede al contenido del mensaje, si es necesario
-    json_content = llm_response.content.strip()
-   
-
-    # Parsear la respuesta JSON
-    try:
-        minutas = json.loads(json_content)
-    except json.JSONDecodeError:
-        return Response({'error': 'Invalid JSON format.'}, status=400)
-    
-    if not minutas:
-        return Response({'error': 'No minutas found in the response.'}, status=400)
-
-    # Extraer la última fecha de la minuta y convertirla a un objeto datetime
-    fecha_termino_str = minutas[-1]['fecha']
-    try:
-        fecha_termino = parser.parse(fecha_termino_str)
-        fecha_termino = fecha_termino.replace(tzinfo=pytz.UTC)  # Asegurarse de que esté en UTC
-    except (ValueError, parser.ParserError) as e:
-        return Response({'error': f'Invalid date format in minutas: {str(e)}'}, status=400)
+    while attempts < max_attempts:
+        try:
+            # Crear la minuta
+            minutas = makeminuta(alimentos_list, people_number, dietary_preference, type_food, starting_date)
+            # Extraer la última fecha de la minuta y convertirla a un objeto datetime
+            fecha_termino_str = minutas[-1]['fecha']
+            fecha_termino = datetime.strptime(fecha_termino_str, '%Y-%m-%d')
+            fecha_termino = fecha_termino.replace(tzinfo=pytz.UTC)  # Asegurarse de que esté en UTC
+            break  # Salir del bucle si no hay errores
+        except Exception as e:
+            print(f"Error creating minuta or parsing fecha_termino_str: {e}")
+            attempts += 1
+            if attempts >= max_attempts:
+                return Response({'error': 'Failed to create minuta or parse fecha_termino_str after multiple attempts.'}, status=500)
 
     # Crear la lista de minuta y asociarla a los alimentos
     lista_minuta = ListaMinuta.objects.create(
@@ -733,7 +885,8 @@ def create_meinuta(request):
         lista_minuta=lista_minuta,
         tipo_dieta=dietary_preference,
         cantidad_personas=people_number,
-        alimentos_usados_ids=List_productos
+        alimentos_usados_ids=List_productos,
+        tipo_alimento=type_food
     )
 
     for minuta_data in minutas:
@@ -742,26 +895,54 @@ def create_meinuta(request):
         except (ValueError, parser.ParserError) as e:
             return Response({'error': f'Invalid date format in minuta: {str(e)}'}, status=400)
         
-        Minuta.objects.create(
+        minuta = Minuta.objects.create(
             lista_minuta=lista_minuta,
             type_food=minuta_data['type_food'],
             name_food=minuta_data['name_food'],
             fecha=fecha_minuta
         )
+        for ingrediente in minuta_data['ingredientes']:
+            MinutaIngrediente.objects.create(
+                id_minuta=minuta,
+                nombre_ingrediente=ingrediente['nombre'],
+                tipo_medida=ingrediente['tipo_medida'],
+                cantidad=ingrediente['cantidad']
+            )
 
     # Convertir la hora a la zona horaria local (Santiago) para la respuesta
     #santiago_tz = pytz.timezone('America/Santiago')
     fecha_inicio_local = lista_minuta.fecha_inicio
     fecha_termino_local = lista_minuta.fecha_termino
 
+    # crear lista de estado de dias y guardar en la base de datos con el valor ep
+    estado_dias = []
+    for minuta in lista_minuta.minutas.all():
+        estado_dias.append({
+            'id_minuta': minuta.id_minuta,
+            'state': 'ep'
+        })
+    # cargar en bd el estado de los dias
+    InfoMinuta.objects.filter(lista_minuta=lista_minuta).update(estado_dias=estado_dias)
+    # Actualizar estadisticas de usuario
+    estadisticas = EstadisticasUsuario.objects.get(usuario=user)
+    estadisticas.total_planes_creados += 1
+    estadisticas.save()
+
     # Formatear las fechas de las minutas para la respuesta
     minutas_data = [
-        {
-            'type_food': minuta.type_food,
-            'name_food': minuta.name_food,
-            'fecha': minuta.fecha
-        } for minuta in lista_minuta.minutas.all()
-    ]
+            {
+                'type_food': minuta.type_food,
+                'name_food': minuta.name_food,
+                'fecha': minuta.fecha,
+                'ingredientes': [
+                    {
+                        'nombre': ingrediente.nombre_ingrediente,
+                        'tipo_medida': ingrediente.tipo_medida,
+                        'cantidad': ingrediente.cantidad
+                    } for ingrediente in minuta.ingredientes.all()
+                ]
+            } for minuta in lista_minuta.minutas.all()
+        ]
 
     return Response({
         'message': 'Minutas added successfully.',
@@ -774,7 +955,8 @@ def create_meinuta(request):
             'state_minuta': lista_minuta.state_minuta
         },
         'minutas': minutas_data
-    }, status=201)
+    }, status=201) 
+    
 
 #COSULTA si hay una minuta activa
 @api_view(['GET'])
@@ -789,6 +971,9 @@ def create_meinuta(request):
     ]
 ))
 def active_minuta(request):
+    """
+    Endpoint for checking if there is an active minuta for the user.
+    """
 
     user_id = request.query_params.get('user_id')
 
@@ -851,7 +1036,15 @@ def minuta_detail(request):
             'id_minuta': minuta.id_minuta,
             'type_food': minuta.type_food,
             'name_food': minuta.name_food,
-            'fecha': minuta.fecha
+            'fecha': minuta.fecha,
+            'ingredientes': [
+                {   
+                    'id_ingrediente': ingrediente.id_minuta_ingrediente,
+                    'nombre': ingrediente.nombre_ingrediente,
+                    'tipo_medida': ingrediente.tipo_medida,
+                    'cantidad': ingrediente.cantidad
+                } for ingrediente in minuta.ingredientes.all()
+            ]
         } for minuta in lista_minuta.minutas.all()
     ]
 
@@ -868,7 +1061,9 @@ def minuta_detail(request):
         },
         'info_minuta': {
             'tipo_dieta': info_minuta.tipo_dieta,
-            'cantidad_personas': info_minuta.cantidad_personas
+            'cantidad_personas': info_minuta.cantidad_personas,
+            'estado_minutas': info_minuta.estado_dias,
+
         },
         'minutas': minutas_data
     })
@@ -894,8 +1089,11 @@ def minuta_detail(request):
     ]
 ))
 def desactivate_minuta(request):
-    user_id = request.query_params.get('user_id')
-    id_lista_minuta = request.query_params.get('ListaMinuta_id')
+    """
+    Endpoint for deactivating a minuta of alimentos.
+    """
+    user_id = request.data.get('user_id')
+    id_lista_minuta = request.data.get('ListaMinuta_id')
 
     # Validar que todos los campos estén presentes
     if not all([user_id, id_lista_minuta]):
@@ -934,6 +1132,9 @@ def desactivate_minuta(request):
     ]
 ))
 def minuta_history(request):
+    """
+    Endpoint for getting the history of minutas of alimentos for a user.
+    """
     user_id = request.query_params.get('user_id')
     
     # Traer todas las minutas del usuario
@@ -1001,6 +1202,9 @@ def minuta_history(request):
     ]
 ))
 def get_receta(request):
+    """
+    Endpoint for getting the recipe of an aliment in a minuta.
+    """
     user_id = request.data.get('user_id')
     id_alimento = request.data.get('id_alimento')
     id_lista_minuta = request.data.get('id_lista_minuta')
@@ -1033,45 +1237,143 @@ def get_receta(request):
     # Obtener número de personas 
     people_number = info_minuta.cantidad_personas
 
-    
+    ingredientes = minuta.ingredientes.all()
+    ingredientes = [
+        {
+            'nombre': ingrediente.nombre_ingrediente,
+            'tipo_medida': ingrediente.tipo_medida,
+            'cantidad': ingrediente.cantidad
+        } for ingrediente in ingredientes
+    ]
 
-    
+    print(ingredientes)
 
-    # Crear el prompt para la API
-    template ="""
-    Proporciona la receta {name_minuta} para la cantidad de {people_number} personas. La receta debe ser devuelta en formato JSON, siguiendo esta estructura:
-
-    {{
-      "ingredientes": [
-        {{ "nombre": "ingrediente1", "cantidad": "cantidad1" }},
-        {{ "nombre": "ingrediente2", "cantidad": "cantidad2" }},
-        ...
-      ],
-      "paso_a_paso": [
-        "Paso 1: descripción del primer paso",
-        "Paso 2: descripción del segundo paso",
-        ...
-      ]
-    }}
-    Usa solo los ingredientes y pasos esenciales para crear el plato.
-    """
-
-    prompt = PromptTemplate(input_variables=[ "name_minuta", "people_number"], template=template)
-    formatted_prompt = prompt.format( name_minuta=name_minuta, people_number=people_number)
-    
-    # Cambia el uso de 'llm' para usar 'invoke'
-    llm_response = llm.invoke(formatted_prompt)
-
-    # Accede al contenido del mensaje, si es necesario
-    json_content = llm_response.content.strip()
-
-    # Parsear la respuesta JSON
-    try:
-        receta = json.loads(json_content)
-    except json.JSONDecodeError:
-        return Response({'error': 'Invalid JSON format in the response.'}, status=400)
+    receta = getreceta(name_minuta, people_number, ingredientes)
 
     return Response({'receta': receta}, status=200)
+
+#Control de uso productos en minuta
+@api_view(['POST'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+        coreapi.Field(
+            name="date",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Date.')
+        ),
+        coreapi.Field(
+            name="realizado",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Realizado.')
+        ),
+    ]
+))
+def control_uso_productos(request):
+    """
+    Endpoint for controlling the use of products in a minuta, realize discount if realizado is true else not realize changes.
+    """
+    user_id = request.data.get('user_id')
+    date_str = request.data.get('date')
+    realizado = request.data.get('realizado')
+    if not all([user_id, date_str, realizado]):
+        return Response({'error': 'All fields are required.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+        date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    except ValueError:
+        return Response({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
+
+    resultado = obtener_y_validar_minuta_del_dia(user, date, realizado)
+
+    #funcion para actualizar data de objetivos
+    control_objetivo_minuta(user,realizado)
+
+    if resultado['status'] == 'True':
+        tiempo_alimento_despensa(user, date) 
+
+    #actualiar info minuta con el estado de los dias
+    #traer el estado de los dias
+    resultado2 = update_estado_dias(user, date, realizado)
+    
+    if resultado['status'] == 'True' and resultado2['status'] == 'True':
+        return Response({'message2': resultado2['message'], 'message': resultado['message'],"descuento":resultado["alimentos_descontados"]}, status=200)
+    elif resultado['status'] == 'True' and resultado2['status'] == 'False':
+        return Response({'status': 'Vamos sigue asi', 'message': resultado['message'],"descuento":resultado["alimentos_descontados"]}, status=200)
+    elif resultado['status'] == 'False' and resultado2['status'] == 'False':
+        return Response({'status': 'Asegurate de seguir la proxima minuta', 'message': resultado['message']}, status=200)
+    else:
+        return Response({'status': 'Error', 'message': resultado['message']}, status=400)
+
+    
+
+
+# EDITAR LA CANTIDAD DE INGREDIENTE DE LA MINUTA DEL DIA 
+@api_view(['PUT'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+        coreapi.Field(
+            name="date",
+            required=True,
+            location="form",
+            schema=coreschema.String(description='Date.')
+        ),
+        coreapi.Field(
+            name="id_ingrediente",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='Ingrediente ID.')
+        ),
+        coreapi.Field(
+            name="cantidad",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='Cantidad.')
+        ),
+    ]
+))
+def edit_ingrediente_minuta(request):
+    """
+    Endpoint for editing the quantity of an ingredient in a minuta.
+    """
+    user_id = request.data.get('user_id')
+    date_str = request.data.get('date')
+    id_ingrediente = request.data.get('id_ingrediente')
+    cantidad = request.data.get('cantidad')
+
+    if not all([user_id, date_str, id_ingrediente, cantidad]):
+        return Response({'error': 'All fields are required.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+        date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    except ValueError:
+        return Response({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
+
+    resultado = editar_cantidad_ingrediente_minuta(user, date, id_ingrediente, cantidad)
+
+    if resultado['status'] == 'error':
+        return Response({'status': 'error', 'message': resultado['message']}, status=400)
+
+    return Response({'status': 'success', 'message': resultado['message']}, status=200)
 
 # NOTIFICACIONES
 
@@ -1087,15 +1389,24 @@ def get_receta(request):
         ),
     ]
 ))
-def obtener_notificacion(request):
+def obtener_notificacion_minuta(request):
+    """
+    Endpoint for getting the notifications of a user, alert the user when exist minuta or not for example
+    1. if exist minuta active generated notification for recorder a user realized minuta.
+    2. if not exist minuta active generated notification for recorder a user not realized minuta and may created minuta plan.
+    """
     usuario = request.query_params.get('user_id')
     print(usuario)
     mensaje = verificar_estado_minuta(usuario)
     print(mensaje)
     if mensaje:
-        return Response({"notificacion": mensaje}, status=200)
+        return Response ({"notifications": [
+            { "notification": mensaje }
+        ]}, status=200)
     else:
-        return Response({"notificacion": "No tienes nuevas notificaciones"}, status=200)
+        return Response({"notifications": [
+            { "notification": False }
+        ]}, status=200)
 
     
 @api_view(['GET'])
@@ -1115,14 +1426,21 @@ def obtener_notificacion(request):
         ),
     ]
 ))
-def obtener_notificacion_dispensa(request):
+def obtener_notificacion_despensa(request):
+    """
+    Endpoint for getting the notifications of a user, alert a user in base state despensa for example:
+    1.if despensa is not have product and minuta active generte notification for join products for not have prductos for complete minuta.
+    2.if despensa is have product generte and have not minuta active notification for generated plan de minutas.
+    3.if despensa is not have product and not minuta active generte notification for join products for generated plan de minutas.
+    4. if not have check that before condition generte a false notification.
+    """
     user_id = request.query_params.get('user_id')
     dispensa_id = request.query_params.get('dispensa_id')
     mensaje = verificar_dispensa(user_id,dispensa_id)
-    if mensaje:
-        return Response({"notificacion": mensaje}, status=200)
-    else:
-        return Response({"notificacion": "No tienes nuevas notificaciones"}, status=200)
+    
+    return Response ({"notifications": [
+            { "notification": mensaje }
+        ]}, status=200)
 
 @api_view(['GET'])
 @schema(AutoSchema(
@@ -1136,9 +1454,409 @@ def obtener_notificacion_dispensa(request):
     ]
 ))
 def uso_productos_para_minuta(request):
+    """
+    Endpoint for getting the notifications of a user, NOT USED NOT USED, you dont ask for why !!!.
+    """
     user_id = request.query_params.get('user_id')
     mensaje = verificar_alimentos_minuta(user_id)
     if mensaje:
-        return Response({"notificacion": mensaje}, status=200)
+        return Response ({"notifications": [
+            { "notification": mensaje }
+        ]}, status=200)
     else:
-        return Response({"notificacion": "No tienes nuevas notificaciones"}, status=200)
+        return Response({"notifications": [
+            { "notification": "No tienes nuevas notificaciones" }
+        ]}, status=200)
+    
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+    ]
+))
+def uso_productos_para_despensa(request):
+    """
+    Endpoint for getting the notifications of a user, this alert exist for 
+    generate "notifications" for the user when exist suggestion of use products.
+    would response  ¡Tienes sugerencias de uso para los alimentos en tu despensa! if have productos that not use in minuta.
+    elif "No hay minuta activa para el usuario, crear una minuta." 
+    else "No hay alimentos en la despensa para entregarte una sugerencia." 
+    """
+    user_id = request.query_params.get('user_id')
+    mensaje = notificacion_sugerencia(user_id)
+    if mensaje:
+        return Response ({"notifications": [
+            { "notification": mensaje }
+        ]}, status=200)
+    else:
+        return Response({"notifications": [
+            { "notification": "No tienes nuevas notificaciones" }
+        ]}, status=200)
+
+
+
+
+#get sugerence of products
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+        coreapi.Field(
+            name="date",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='Dispensa ID.')
+        ),
+    ]
+))
+def sugerencia_productos_despensa(request):
+    """
+    Endpoint for getting the data suggestions of use products that not use in minuta and stay in despensa.
+    Have to uses after generate notification for user with notificacion_sugerencia that may be have suggestions.
+    """
+    user_id = request.query_params.get('user_id')
+    date_str = request.query_params.get('date')
+    
+    if not all([user_id, date_str]):
+        return Response({'error': 'User ID and Date are required.'}, status=400)
+    
+    try:
+        user = Users.objects.get(id_user=user_id)
+        date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    
+    # obtener sugerencia 
+    suggestion_user = Sugerencias.objects.filter(user=user, fecha=date)
+    if suggestion_user:
+        suggestion = suggestion_user.first().recomendacion
+    else:
+        suggestion = "No hay sugerencias para el usuario en la fecha indicada."
+
+    return Response({'suggestion': suggestion}, status=200)
+
+# Recomendaciones de compra 
+@api_view(['POST'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+        coreapi.Field(
+            name="type_recommendation",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='Type of recommendation. Allowed values: 1, 2, 3. (1: Comida más utilizada, 2: Dieta más utilizada, 3: Uso frecuente por comida.)')
+        ),
+    ]
+))
+def recomendacion_compra(request):
+    """
+    Endpoint for generated recomendation the buy a user based your stadistics, is not notification.
+    """
+    user_id = request.data.get('user_id')
+    type_recommendation = request.data.get('type_recommendation')
+    print(f"Received type_recommendation: {type_recommendation}")
+
+    if not all([user_id, type_recommendation]):
+        return Response({'error': 'User ID and Type of recommendation are required.'}, status=400)
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+
+    try:
+        type_recommendation = int(type_recommendation)
+    except ValueError:
+        return Response({'error': 'Type of recommendation must be an integer.'}, status=400)
+    
+    #control de data minima para la recomendacion
+    data_minima = data_minima_recomendacion_compra(user,type_recommendation)
+    if not data_minima or data_minima == "error":
+        return Response({'recommendation': 'aun no hay recomendaciones para ti '}, status=500)
+
+    # Switch para rotar entre las recomendaciones
+    if type_recommendation == 1:
+        recommendation = typo_food_mas_utlizado(user.id_user)
+        context = 'el analicis del usuario indica que la comida mas utilizada es: '
+    elif type_recommendation == 2:
+        recommendation = obtener_dieta_mas_usada(user.id_user)
+        context = 'el analicis del usuario indica que la dieta mas utilizada es: '
+    elif type_recommendation == 3:
+        recommendation = calcular_uso_frecuente_por_comida(user.id_user)
+        context = 'el analicis del usuario indica que el los alimentos mas utilizados en los tipo comidas son: '
+    else:
+        return Response({'error': 'Invalid type of recommendation. Allowed values: 1, 2, 3.'}, status=400)
+    
+    recomendation_ia = crear_recomendacion_compra(recommendation, context)
+
+    return Response({'recommendation': recomendation_ia}, status=200)
+
+## CREAR OBJETIVOS 
+@api_view(['POST'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+        coreapi.Field(
+            name="id_tipo_objetivo",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='Objetivo.')
+        ),
+        coreapi.Field(
+            name="meta_objetivo",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='meta del objetivo.')
+        ),
+    ]
+))
+def crear_objetivo(request):
+    """
+    Endpoint for creating a objetive for a user.
+    """
+    user_id = request.data.get('user_id')
+    id_tipo_objetivo = request.data.get('id_tipo_objetivo')
+    meta_objetivo = request.data.get('meta_objetivo')
+
+    if not all([user_id, id_tipo_objetivo, meta_objetivo]):
+        return Response({'error': 'User ID, Tipo Objetivo and Meta Objetivo are required.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+
+    try:
+        meta_objetivo = int(meta_objetivo)
+    except ValueError:
+        return Response({'error': 'Meta Objetivo must be an integer.'}, status=400)
+    
+    try:
+        tipo_objetivo = TipoObjetivo.objects.get(id_tipo_objetivo=id_tipo_objetivo)
+    except TipoObjetivo.DoesNotExist:
+        return Response({'error': 'Tipo Objetivo not found.'}, status=404)
+    
+    try:
+        objetivo = Objetivo.objects.get(user=user, state_objetivo=True)
+        return Response({'error': 'User already has an active objective.'}, status=400)
+    except Objetivo.DoesNotExist:
+        pass
+    
+    
+    try:
+        objetivo = Objetivo.objects.create(
+            user=user,
+            id_tipo_objetivo=tipo_objetivo,
+            meta_total=meta_objetivo,
+            state_objetivo=True
+        )
+         # Crear el progreso inicial en 0 para el nuevo objetivo
+        ProgresoObjetivo.objects.create(
+            objetivo=objetivo,
+            progreso_diario=0,
+            progreso_acumulado=0
+        )
+
+        objetivo_data = ObjetivoSerializer(objetivo).data
+
+        return Response({'message': 'Objetivo created successfully.', 'objetivo': objetivo_data}, status=201)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+    
+## CONSULTAR OBJETIVOS
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+    ]
+))
+def consultar_objetivo(request):
+    """
+    Endpoint for getting the objetive of a user.
+    """
+    user_id = request.query_params.get('user_id')
+
+    if not user_id:
+        return Response({'error': 'User ID is required.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    
+    try:
+        objetivo = Objetivo.objects.get(user=user, state_objetivo=True)
+    except Objetivo.DoesNotExist:
+        return Response({'error': 'No active objective found for the user.'}, status=404)
+    
+    objetivo_data = ObjetivoSerializer(objetivo).data
+
+    return Response({'objetivo': objetivo_data}, status=200)
+
+## ELIMINAR OBJETIVOS
+@api_view(['PUT'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="form",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+    ]
+))
+def eliminar_objetivo(request):
+    """
+    Endpoint for deactivating a objetive of a user.
+    """
+    user_id = request.data.get('user_id')
+
+    if not user_id:
+        return Response({'error': 'User ID is required.'}, status=400)
+    
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    
+    try:
+        objetivo = Objetivo.objects.get(user=user, state_objetivo=True)
+    except Objetivo.DoesNotExist:
+        return Response({'error': 'No active objective found for the user.'}, status=404)
+    
+    # Cambiar estado del objetivo a inactivo
+    objetivo.state_objetivo = False
+    objetivo.save()
+
+    # Verificar si el estado se ha actualizado correctamente
+    if not objetivo.state_objetivo:
+        return Response({'message': 'Objetivo is deactivated.'}, status=200)
+    else:
+        return Response({'error': 'Failed to deactivate Objetivo.'}, status=500)
+    
+## CONSULTAR PROGRESO DE OBJETIVOS
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+    ]
+))
+def consultar_progreso_objetivo(request):
+    """
+    Endpoint for getting the progress of the objetive of a user.
+    """
+    user_id = request.query_params.get('user_id')
+
+    if not user_id:
+        return Response({'error': 'User ID is required.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    
+    try:
+        objetivo = Objetivo.objects.get(user=user, state_objetivo=True)
+    except Objetivo.DoesNotExist:
+        return Response({'error': 'No active objective found for the user.'}, status=404)
+    
+    progreso = ProgresoObjetivo.objects.filter(objetivo=objetivo).order_by('-id').first()
+    progreso_data = ProgresoObjetivoSerializer(progreso).data
+
+    return Response({'progreso': progreso_data}, status=200)
+
+## ENDPOINT PARA ENTREGAR INFORMACION DE ESTADISTICAS DE USUARIO
+@api_view(['GET'])
+@schema(AutoSchema(
+    manual_fields=[
+        coreapi.Field(
+            name="user_id",
+            required=True,
+            location="query",
+            schema=coreschema.Integer(description='User ID.')
+        ),
+    ]
+))
+def estadisticas_usuario(request):
+    """
+    Endpoint for getting the statistics of a user.\n
+    total_alimentos_ingresados: total productos join in despensa.\n
+    total_desperdicio_alimentos: total productos delete in despensa,Una disminución en este número refleja una mejor planificación y aprovechamiento.\n
+    total_minutas_creadas: total minutas created by user.\n
+    total_planes_creados: total planes created by user.\n
+    total_minutas_realizadas: total minutas realized by user.\n
+    total_minutas_no_realizadas: total minutas not realized by user.\n
+    total_planes_realizados: total planes realized by user.\n
+    total_planes_no_realizados: total planes not realized by user.\n
+    porcentaje_alimentos_aprovechados: percentage of aprovechados products, Indica la eficiencia en el uso de los alimentos y si se está reduciendo el desperdicio.\n
+    desperdicio_actual: desperdicio actual (entre las ultimas 2 minutas creadas), muestra que porcentaje de productos se han desperdiciado .\n
+    reduccion_desperdicio: reduction of desperdicio Refleja si las estrategias de planificación están funcionando para minimizar el desperdicio..\n
+    promedio_duracion_alimentos: average duration of products, muestra con que velocidad se utlizan los productos en despensa.\n
+    proporcion_planes_completados: proportion of planes completed by user.
+    """
+    user_id = request.query_params.get('user_id')
+
+    if not user_id:
+        return Response({'error': 'User ID is required.'}, status=400)
+
+    try:
+        user = Users.objects.get(id_user=user_id)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+    
+    try:
+        estadisticas = EstadisticasUsuario.objects.get(usuario=user)
+    except EstadisticasUsuario.DoesNotExist:
+        return Response({'error': 'No statistics found for the user.'}, status=404)
+    
+    # Traer el último registro de desperdicio
+    ultimo_registro = Desperdicio.objects.filter(user_id=user_id).order_by('-id_desperdicio').first()
+    
+    # NO SE ESTÁN USANDO LOS SERIALIZADORES
+    
+    estadisticas_data = {
+        'total_alimentos_ingresados': estadisticas.total_alimentos_ingresados,
+        'total_desperdicio_alimentos': estadisticas.total_alimentos_eliminados,
+        'total_minutas_creadas': estadisticas.total_minutas_creadas,
+        'total_planes_creados': estadisticas.total_planes_creados,
+        'total_minutas_realizadas': estadisticas.total_minutas_completadas,
+        'total_minutas_no_realizadas': (estadisticas.total_minutas_creadas - estadisticas.total_minutas_completadas ),
+        'total_planes_realizados': estadisticas.total_planes_completados,
+        'total_planes_no_realizados': estadisticas.total_planes_creados - estadisticas.total_planes_completados,
+        'porcentaje_alimentos_aprovechados': estadisticas.porcentaje_alimentos_aprovechados,
+        'desperdicio_actual': ultimo_registro.cantidad if ultimo_registro else 0,
+        'reduccion_desperdicio': estadisticas.reduccion_desperdicio,
+        'promedio_duracion_alimentos': estadisticas.promedio_duracion_alimentos,
+        'proporcion_planes_completados': estadisticas.proporcion_planes_completados
+    }
+
+    return Response({'estadisticas': estadisticas_data}, status=200)

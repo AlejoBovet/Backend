@@ -1,4 +1,6 @@
-from .models import ListaMinuta, DispensaAlimento, InfoMinuta
+from apirest.models import ListaMinuta, DispensaAlimento, InfoMinuta
+from .sugerencias import analizar_despensa
+
 
 #funcion para verificar el estado de la minuta del usuario      
 def verificar_estado_minuta(user_id):
@@ -26,16 +28,15 @@ def verificar_dispensa(user_id, dispensa_id):
     alimentos_dispensa = DispensaAlimento.objects.filter(dispensa=dispensa_id).count()
     minuta_activa = ListaMinuta.objects.filter(user=user_id, state_minuta=True).exists()
 
-    if alimentos_dispensa > 0:
-        if minuta_activa == True:
-            return None
-        else:
-            return "Tu despensa tiene alimentos. ¡Crea una minuta para planificar"
-    else:
+    if alimentos_dispensa == 0 and minuta_activa:
+        return "No hay alimentos en la despensa para la minuta, asegurate de tener lo necesario para cumplir con el plan."
+    elif alimentos_dispensa > 0 and not minuta_activa:
+        return "Tu despensa tiene alimentos. ¡Crea una minuta para organizar tu alimentación!"
+    elif alimentos_dispensa == 0 and not minuta_activa:
         return "Tu despensa está vacía. ¡Agrega alimentos para poder planificar tus comidas!"
-
-    # Si no hay notificaciones necesarias 
-    return None
+    else:
+        return False
+        
 
 # Función para verificar qué alimentos se utilizaron en la minuta
 def verificar_alimentos_minuta(user_id):
@@ -50,20 +51,32 @@ def verificar_alimentos_minuta(user_id):
     info_minuta = InfoMinuta.objects.filter(lista_minuta=minuta_activa).first()
 
     if not info_minuta:
-        print("No hay información de minuta para la minuta activa.")
+        #print("No hay información de minuta para la minuta activa.")
         return None
     
     alimentos_usados_ids = info_minuta.alimentos_usados_ids
-    print(f"Alimentos usados en la minuta: {alimentos_usados_ids}")
+    #print(f"Alimentos usados en la minuta: {alimentos_usados_ids}")
 
     # Verificar si los alimentos que están en la despensa están en la minuta
     alimentos_dispensa = DispensaAlimento.objects.filter(dispensa=minuta_activa.user.dispensa).values_list('alimento_id', flat=True)
-    print(f"Alimentos en la despensa: {list(alimentos_dispensa)}")
+    #print(f"Alimentos en la despensa: {list(alimentos_dispensa)}")
 
     alimentos_no_minuta = [alimento for alimento in alimentos_dispensa if alimento not in alimentos_usados_ids]
-    print(f"Alimentos no en la despensa: {alimentos_no_minuta}")
+    #print(f"Alimentos no en la despensa: {alimentos_no_minuta}")
 
     if alimentos_no_minuta:
         return f"En tu despensa hay alimentos que no se utilizaron en la minuta. ¡Recrea tu minuta!"
     else:
         return None
+
+def notificacion_sugerencia(user_id):
+    mensaje_sugerencia = analizar_despensa(user_id)
+
+    if mensaje_sugerencia == "Hay una recomendación para los productos que no utilizaste en tu minuta":
+        return "¡Tienes sugerencias de uso para los alimentos en tu despensa!"
+    elif mensaje_sugerencia == "No hay minuta activa para el usuario.":
+        return "No hay minuta activa para el usuario."
+    elif mensaje_sugerencia == "No hay alimentos en la despensa.":
+        return "No hay alimentos en la despensa."
+    else:
+        return "No generar notificación"
